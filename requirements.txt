@@ -1,0 +1,2 @@
+usd-core==26.5
+pygltflib==1.16.5
