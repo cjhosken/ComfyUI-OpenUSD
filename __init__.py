@@ -23,8 +23,8 @@ NODE_CLASS_MAPPINGS = {
     "LoadOpenUSD": LoadOpenUSD,
     "SaveOpenUSD": SaveOpenUSD,
     "PreviewOpenUSD": PreviewOpenUSD,
-    "SplitUSD": SplitOpenUSD,
-    "CombineUSD": CombineOpenUSD,
+    "SplitOpenUSD": SplitOpenUSD,
+    "CombineOpenUSD": CombineOpenUSD,
     "ConvertOpenUSD": ConvertOpenUSD
 }
 
@@ -32,8 +32,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadOpenUSD": "Load OpenUSD",
     "SaveOpenUSD": "Save OpenUSD",
     "PreviewOpenUSD": "Preview OpenUSD",
-    "SplitUSD": "Split USD",
-    "CombineUSD": "Combine USD",
+    "SplitOpenUSD": "Split OpenUSD",
+    "CombineOpenUSD": "Combine OpenUSD",
     "ConvertOpenUSD": "Convert OpenUSD"
 }
 

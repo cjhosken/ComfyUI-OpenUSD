@@ -6,7 +6,7 @@ class SplitOpenUSD:
     CATEGORY = "USD"
     FUNCTION = "split_usd"
 
-    RETURN_TYPES = ("STRING", "TEXT",)
+    RETURN_TYPES = ("STRING", "STRING",)
     RETURN_NAMES = ("usd_path", "usda_text",)
 
     @classmethod
@@ -34,7 +34,7 @@ class CombineOpenUSD:
         return {
             "required": {
                 "usd_path": ("STRING", {"default": "", "multiline": False}),
-                "usda_text": ("TEXT", {"multiline": True, "forceInput": True}),
+                "usda_text": ("STRING", {"multiline": True, "forceInput": True}),
             }
         }
 
