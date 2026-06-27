@@ -1,0 +1,14 @@
+-- UI / Interface --
+1. Custom USD Socket Colors
+
+
+-- USD Editing --
+1. Primitive Editing
+2. Material Editing (To feed in AI Generated Textures)
+3. Sublayering
+4. Variants, Composition Arcs, Purposes
+
+
+-- USD Rendering --
+1. Better Viewport (Camera Support)
+2. USD Playblast Rendering? (With Depth?)
