@@ -18,4 +18,4 @@ Repository = "https://github.com/cjhosken/ComfyUI-OpenUSD"
 [tool.comfy]
 PublisherId = "cjhosken"
 DisplayName = "OpenUSD"
-Icon = "icon.png"
+Icon = "./icon.png"
