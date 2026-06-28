@@ -1,0 +1,21 @@
+[project]
+name = "ComfyUI-OpenUSD"
+description = "This node pack introduces OpenUSD support for ComfyUI"
+version = "0.0.1"
+license = { file = "LICENSE.txt" }
+dependencies = [
+    "usd-core",
+    "pygltflib",
+    "piexif",
+    "numpy",
+    "trimesh"
+]
+
+[project.urls]
+Repository = "https://github.com/cjhosken/ComfyUI-OpenUSD"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "cjhosken"
+DisplayName = "OpenUSD"
+Icon = "icon.png"
