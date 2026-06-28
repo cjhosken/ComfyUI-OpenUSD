@@ -27,7 +27,6 @@ from .nodes.utils.prim.usd_prim_set import SetUSDPrimInfo
 
 from .nodes.utils.prim.usd_prim_color import SetUSDPrimDisplayColor
 from .nodes.utils.prim.usd_prim_configure import ConfigureUSDPrim
-from .nodes.utils.prim.usd_transform import TransformUSDPrim
 
 NODE_CLASS_MAPPINGS = {
     "LoadUSD": LoadUSD,
@@ -44,7 +43,6 @@ NODE_CLASS_MAPPINGS = {
     "SetUSDPrimInfo": SetUSDPrimInfo,
     "GetUSDPrimInfo": GetUSDPrimInfo,
 
-    "TransformUSDPrim": TransformUSDPrim,
     "ConfigureUSDPrim": ConfigureUSDPrim,
     "SetUSDPrimDisplayColor": SetUSDPrimDisplayColor
 }
@@ -64,16 +62,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SetUSDPrimInfo": "Set USD Prim Info",
     "GetUSDPrimInfo": "Get USD Prim Info",
 
-    "TransformUSDPrim": "Transform USD Prim",
     "ConfigureUSDPrim": "Configure USD Prim",
     "SetUSDPrimDisplayColor": "Set USD Prim Display Color"
 }
-
-from .nodes.utils.data.usd_vec3 import NODE_DISPLAY_NAME_MAPPINGS as VEC3_NAME_MAPPINGS
-from .nodes.utils.data.usd_vec3 import NODE_CLASS_MAPPINGS as VEC3_CLASS_MAPPINGS
-
-NODE_CLASS_MAPPINGS = NODE_CLASS_MAPPINGS | VEC3_CLASS_MAPPINGS
-NODE_DISPLAY_NAME_MAPPINGS = NODE_DISPLAY_NAME_MAPPINGS | VEC3_NAME_MAPPINGS
 
 WEB_DIRECTORY = "web"
 
