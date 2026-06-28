@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-OpenUSD"
 description = "This node pack introduces OpenUSD support for ComfyUI"
-version = "0.0.1"
+version = "0.0.2"
 license = { file = "LICENSE" }
 dependencies = [
     "usd-core",
