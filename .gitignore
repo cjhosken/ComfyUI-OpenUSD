@@ -1,2 +1,6 @@
 __pycache__/
 node_modules/
+docs/
+tests/
+*.psd
+.vscode/

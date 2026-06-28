@@ -1,21 +1,17 @@
 [project]
 name = "ComfyUI-OpenUSD"
-description = "This node pack introduces OpenUSD support for ComfyUI"
-version = "0.0.3"
+description = "Pixar's OpenUSD pipeline integration for ComfyUI. Natively compose and render 3D scenes within your node workflows."
+version = "0.0.4"
 license = { file = "LICENSE" }
-dependencies = [
-    "usd-core",
-    "pygltflib",
-    "piexif",
-    "numpy",
-    "trimesh"
-]
+dependencies = [] # Filled in from requirements.txtt
 
 [project.urls]
 Repository = "https://github.com/cjhosken/ComfyUI-OpenUSD"
+"Bug Tracker" = "https://github.com/cjhosken/ComfyUI-OpenUSD/issues"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
 PublisherId = "cjhosken"
-DisplayName = "OpenUSD"
+DisplayName = "Pixar's OpenUSD"
 Icon = "https://github.com/cjhosken/ComfyUI-OpenUSD/blob/main/icon.png"
+Banner = "https://github.com/cjhosken/ComfyUI-OpenUSD/blob/main/banner.jpg"
