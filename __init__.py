@@ -69,7 +69,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SetUSDPrimDisplayColor": "Set USD Prim Display Color"
 }
 
-WEB_DIRECTORY = "./web"
+from .nodes.utils.data.usd_vec3 import NODE_DISPLAY_NAME_MAPPINGS as VEC3_NAME_MAPPINGS
+from .nodes.utils.data.usd_vec3 import NODE_CLASS_MAPPINGS as VEC3_CLASS_MAPPINGS
+
+NODE_CLASS_MAPPINGS = NODE_CLASS_MAPPINGS | VEC3_CLASS_MAPPINGS
+NODE_DISPLAY_NAME_MAPPINGS = NODE_DISPLAY_NAME_MAPPINGS | VEC3_NAME_MAPPINGS
+
+WEB_DIRECTORY = "web"
 
 def resolve_case_insensitive(path):
     if os.path.exists(path):
