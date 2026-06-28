@@ -15,18 +15,19 @@ server.PromptServer.instance.app._middlewares = existing.__class__(new_middlewar
 
 from .nodes.usd_io import LoadUSD, SaveUSD
 from .nodes.usd_view import PreviewUSD
-from .nodes.usd_utils import (
-    SplitUSD, CombineUSD, ApplyUSDMaterial
-)
+from .nodes.usd_utils import (SplitUSD, CombineUSD)
 from .nodes.usd_convert import (
     ConvertUSD, MeshToUSD, Model3DToUSD, USDtoModel3D,
 )
 
 
+from .nodes.utils.shader.usd_material import ApplyUSDMaterial
 from .nodes.utils.prim.usd_prim_get import GetUSDPrimInfo
 from .nodes.utils.prim.usd_prim_set import SetUSDPrimInfo
 
-
+from .nodes.utils.prim.usd_prim_color import SetUSDPrimDisplayColor
+from .nodes.utils.prim.usd_prim_configure import ConfigureUSDPrim
+from .nodes.utils.prim.usd_transform import TransformUSDPrim
 
 NODE_CLASS_MAPPINGS = {
     "LoadUSD": LoadUSD,
@@ -41,7 +42,11 @@ NODE_CLASS_MAPPINGS = {
     "ApplyUSDMaterial": ApplyUSDMaterial,
 
     "SetUSDPrimInfo": SetUSDPrimInfo,
-    "GetUSDPrimInfo": GetUSDPrimInfo
+    "GetUSDPrimInfo": GetUSDPrimInfo,
+
+    "TransformUSDPrim": TransformUSDPrim,
+    "ConfigureUSDPrim": ConfigureUSDPrim,
+    "SetUSDPrimDisplayColor": SetUSDPrimDisplayColor
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -57,7 +62,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ApplyUSDMaterial": "USD Material",
 
     "SetUSDPrimInfo": "Set USD Prim Info",
-    "GetUSDPrimInfo": "Get USD Prim Info"
+    "GetUSDPrimInfo": "Get USD Prim Info",
+
+    "TransformUSDPrim": "Transform USD Prim",
+    "ConfigureUSDPrim": "Configure USD Prim",
+    "SetUSDPrimDisplayColor": "Set USD Prim Display Color"
 }
 
 WEB_DIRECTORY = "./web"

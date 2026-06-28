@@ -3,8 +3,9 @@
 
 -- Primitives --
 1. Prim Configuring (Activation, Visibility, Purpose)
-2. Lights
-3. Better Material Textures
+2. Lights Node
+3. Transform Node
+4. Better Material Textures
 
 -- Composition --
 1. Sublayering
