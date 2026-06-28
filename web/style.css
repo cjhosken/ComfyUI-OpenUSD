@@ -1,27 +1,27 @@
 /* ============================================================
-   ComfyUI-USD  –  Global widget styles
+   ComfyUI-USD  -  Global widget styles
    ============================================================ */
 
 :root {
-    --usd-bg-deep:    #0d0d10;
-    --usd-bg-base:    #141418;
-    --usd-bg-surface: #1c1c22;
-    --usd-bg-raised:  #242430;
-    --usd-border:     #2e2e3a;
-    --usd-accent:     #7c6af7;
-    --usd-accent-dim: #4f46a0;
-    --usd-text:       #d4d4d8;
-    --usd-text-muted: #71717a;
-    --usd-text-dim:   #52525b;
-    --usd-green:      #34d399;
-    --usd-yellow:     #fbbf24;
+    --usd-bg-deep:    #121214; /* ComfyUI dark background */
+    --usd-bg-base:    #1c1c1e;
+    --usd-bg-surface: #252528;
+    --usd-bg-raised:  #2e2e32;
+    --usd-border:     #3c3c40;
+    --usd-accent:     #8E6BFF; /* ComfyUI-USD theme violet */
+    --usd-accent-dim: rgba(142, 107, 255, 0.15);
+    --usd-text:       #e5e7eb;
+    --usd-text-muted: #9ca3af;
+    --usd-text-dim:   #6b7280;
+    --usd-green:      #10b981;
+    --usd-yellow:     #f59e0b;
     --usd-blue:       #60a5fa;
-    --usd-purple:     #a78bfa;
-    --usd-red:        #f43f5e;
-    --usd-radius:     6px;
-    --usd-radius-sm:  3px;
-    --usd-font-mono:  'JetBrains Mono', 'Fira Mono', 'Cascadia Code', monospace;
-    --usd-font-ui:    'Inter', system-ui, sans-serif;
+    --usd-purple:     #c084fc;
+    --usd-red:        #ef4444;
+    --usd-radius:     4px;
+    --usd-radius-sm:  2px;
+    --usd-font-mono:  Consolas, Menlo, Monaco, monospace;
+    --usd-font-ui:    system-ui, -apple-system, sans-serif;
 }
 
 /* ---- Shared button ---------------------------------------- */
@@ -114,6 +114,26 @@
     cursor: pointer;
 }
 
+/* ---- Scrollbar Restyling (Thicker & Easy-to-grab) --------- */
+.usd-tree-container::-webkit-scrollbar,
+.usd-info-panel::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.usd-tree-container::-webkit-scrollbar-track,
+.usd-info-panel::-webkit-scrollbar-track {
+    background: var(--usd-bg-deep);
+}
+.usd-tree-container::-webkit-scrollbar-thumb,
+.usd-info-panel::-webkit-scrollbar-thumb {
+    background: #4b5563; /* Easier to see and grab */
+    border-radius: 4px;
+}
+.usd-tree-container::-webkit-scrollbar-thumb:hover,
+.usd-info-panel::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
+
 /* ---- Tree view -------------------------------------------- */
 .usd-tree-container {
     width: 100%;
@@ -127,35 +147,24 @@
     box-sizing: border-box;
     user-select: none;
 }
-.usd-tree-container::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-}
-.usd-tree-container::-webkit-scrollbar-track {
-    background: var(--usd-bg-deep);
-}
-.usd-tree-container::-webkit-scrollbar-thumb {
-    background: var(--usd-border);
-    border-radius: 2px;
-}
 
 .usd-tree-row {
     display: flex;
     align-items: center;
     gap: 2px;
-    padding: 1px 4px;
+    padding: 2px 4px;
     border-radius: var(--usd-radius-sm);
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.1s;
-    min-height: 20px;
+    min-height: 22px;
 }
 .usd-tree-row:hover {
     background: var(--usd-bg-raised);
 }
 .usd-tree-row.selected {
     background: var(--usd-accent-dim);
-    outline: 1px solid var(--usd-accent);
+    box-shadow: inset 2px 0 0 var(--usd-accent);
 }
 
 .usd-tree-toggle {
@@ -180,14 +189,14 @@
     font-size: 10px;
 }
 .usd-tree-label {
-    color: var(--usd-blue);
+    color: var(--usd-text);
     flex-shrink: 0;
 }
 .usd-tree-type {
-    color: var(--usd-purple);
+    color: var(--usd-accent);
     font-size: 9px;
     margin-left: 5px;
-    opacity: 0.8;
+    opacity: 0.85;
 }
 .usd-tree-children {
     /* indent is applied inline via padding-left */
@@ -198,20 +207,12 @@
     width: 100%;
     overflow: auto;
     background: var(--usd-bg-deep);
-    border-top: 1px solid var(--usd-border);
     padding: 6px 8px;
     box-sizing: border-box;
     font-family: var(--usd-font-mono);
     font-size: 10px;
     color: var(--usd-text-muted);
     display: none;
-}
-.usd-info-panel::-webkit-scrollbar {
-    width: 4px;
-}
-.usd-info-panel::-webkit-scrollbar-thumb {
-    background: var(--usd-border);
-    border-radius: 2px;
 }
 
 .usd-attr-section-title {
@@ -226,8 +227,8 @@
 .usd-attr-row {
     display: flex;
     gap: 6px;
-    padding: 1px 0;
-    border-bottom: 1px solid rgba(46, 46, 58, 0.4);
+    padding: 2px 0;
+    border-bottom: 1px solid rgba(60, 60, 64, 0.4);
     align-items: baseline;
 }
 .usd-attr-name {

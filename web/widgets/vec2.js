@@ -1,4 +1,3 @@
-import { app } from "../../scripts/app.js";
 
 function createVec2Widget(node, inputName, value = [0, 0]) {
     value = Array.isArray(value) ? value : [0, 0];

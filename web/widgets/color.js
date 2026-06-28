@@ -1,4 +1,3 @@
-import { app } from "../../scripts/app.js";
 
 function createColorWidget(node, inputName, value = "#ffffff") {
     const container = document.createElement("div");

@@ -22,7 +22,7 @@ export class USDTreeView {
     _buildShell() {
         this.container.style.cssText = `
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             width: 100%;
             height: 100%;
             overflow: hidden;
@@ -35,6 +35,7 @@ export class USDTreeView {
         this.treeScroll.style.cssText = `
             flex: 1;
             overflow: auto;
+            min-width: 0;
             min-height: 0;
         `;
         this._showEmpty('No USD data loaded');
@@ -42,7 +43,15 @@ export class USDTreeView {
         // Attributes panel (shown on selection)
         this.attrPanel = document.createElement('div');
         this.attrPanel.className = 'usd-info-panel';
-        this.attrPanel.style.maxHeight = '130px';
+        this.attrPanel.style.cssText = `
+            flex: 1;
+            overflow: auto;
+            border-top: none;
+            border-left: 1px solid var(--usd-border, #2e2e3a);
+            max-height: none;
+            min-width: 0;
+            min-height: 0;
+        `;
 
         this.container.appendChild(this.treeScroll);
         this.container.appendChild(this.attrPanel);

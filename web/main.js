@@ -201,8 +201,13 @@ app.registerExtension({
                     /* Load 3-D viewport */
                     await this.viewport.loadUSD(filePath, usdaText);
 
-                    /* Load prim tree - prefers usda_text, falls back to filePath */
-                    await this.treeView.load(usdaText || null, filePath || null);
+                    /* Load prim tree - prefers usda_text, falls back to filePath unless it is binary/usdz */
+                    const isBinaryOrUsdz = filePath && (filePath.toLowerCase().endsWith('.usdz') || filePath.toLowerCase().endsWith('.usd'));
+                    if (isBinaryOrUsdz) {
+                        await this.treeView.load(null, filePath);
+                    } else {
+                        await this.treeView.load(usdaText || null, filePath || null);
+                    }
                 } catch (error) {
                     console.error("[USD] Failed to load:", error);
                 }

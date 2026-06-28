@@ -332,154 +332,127 @@ export class USDViewport {
 
     // Helper method to create quad wireframe geometry (maintains quad structure)
     createQuadWireframeGeometry(geometry) {
-        // Clone the geometry to avoid modifying the original
         const clonedGeom = geometry.clone();
         const position = clonedGeom.attributes.position;
         const index = clonedGeom.index;
 
-        if (!index) {
-            // If no index, assume triangles are already expanded
-            return this.expandToQuadWireframe(clonedGeom);
-        }
+        const posArray = position.array;
+        const triIndices = index ? index.array : null;
+        const vertexCount = position.count;
 
-        // Convert triangle indices to quad wireframe indices
-        const triIndices = index.array;
-        const quadIndices = [];
-
-        for (let i = 0; i < triIndices.length; i += 3) {
-            const a = triIndices[i];
-            const b = triIndices[i + 1];
-            const c = triIndices[i + 2];
-
-            // For quads, we need to detect if this triangle is part of a quad
-            // and create wireframe edges accordingly
-            // We'll use a simple approach: create all edges and deduplicate
-            quadIndices.push(a, b);
-            quadIndices.push(b, c);
-            quadIndices.push(c, a);
-        }
-
-        // Deduplicate edges (for clean quad wireframe)
-        const edgeSet = new Set();
-        const uniqueEdges = [];
-
-        for (let i = 0; i < quadIndices.length; i += 2) {
-            const a = quadIndices[i];
-            const b = quadIndices[i + 1];
-            const key = Math.min(a, b) + ',' + Math.max(a, b);
-
-            if (!edgeSet.has(key)) {
-                edgeSet.add(key);
-                uniqueEdges.push(a, b);
+        // If not indexed, build a simple index
+        let indices = triIndices;
+        if (!indices) {
+            indices = new Uint32Array(vertexCount);
+            for (let i = 0; i < vertexCount; i++) {
+                indices[i] = i;
             }
         }
 
-        // Create new buffer geometry with only wireframe edges
-        const wireframeGeom = new THREE.BufferGeometry();
-        const vertices = [];
+        // 1. Calculate face normals
+        const faceNormals = [];
+        const numFaces = indices.length / 3;
+        
+        for (let f = 0; f < numFaces; f++) {
+            const i0 = indices[f * 3];
+            const i1 = indices[f * 3 + 1];
+            const i2 = indices[f * 3 + 2];
 
-        // Map original vertex positions
-        const posAttr = position;
-        const positions = posAttr.array;
+            const ax = posArray[i0 * 3], ay = posArray[i0 * 3 + 1], az = posArray[i0 * 3 + 2];
+            const bx = posArray[i1 * 3], by = posArray[i1 * 3 + 1], bz = posArray[i1 * 3 + 2];
+            const cx = posArray[i2 * 3], cy = posArray[i2 * 3 + 1], cz = posArray[i2 * 3 + 2];
 
-        for (let i = 0; i < uniqueEdges.length; i++) {
-            const idx = uniqueEdges[i];
-            const baseIdx = idx * 3;
-            vertices.push(
-                positions[baseIdx],
-                positions[baseIdx + 1],
-                positions[baseIdx + 2]
-            );
+            // AB and AC vectors
+            const ux = bx - ax, uy = by - ay, uz = bz - az;
+            const vx = cx - ax, vy = cy - ay, vz = cz - az;
+
+            // Cross product
+            let nx = uy * vz - uz * vy;
+            let ny = uz * vx - ux * vz;
+            let nz = ux * vy - uy * vx;
+
+            // Normalize
+            const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+            if (len > 0) {
+                nx /= len;
+                ny /= len;
+                nz /= len;
+            }
+            faceNormals.push({ x: nx, y: ny, z: nz });
         }
 
-        wireframeGeom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        // 2. Map edges to faces
+        const edgeToFaces = {};
+        for (let f = 0; f < numFaces; f++) {
+            const i0 = indices[f * 3];
+            const i1 = indices[f * 3 + 1];
+            const i2 = indices[f * 3 + 2];
 
-        // Copy morph attributes if they exist
-        if (geometry.morphAttributes && geometry.morphAttributes.position) {
-            wireframeGeom.morphAttributes.position = geometry.morphAttributes.position.map((morphAttr) => {
-                const morphPositions = [];
-                const morphArray = morphAttr.array;
-                for (let i = 0; i < uniqueEdges.length; i++) {
-                    const idx = uniqueEdges[i];
-                    const baseIdx = idx * 3;
-                    morphPositions.push(
-                        morphArray[baseIdx],
-                        morphArray[baseIdx + 1],
-                        morphArray[baseIdx + 2]
-                    );
+            const edges = [
+                [i0, i1],
+                [i1, i2],
+                [i2, i0]
+            ];
+
+            for (const [v0, v1] of edges) {
+                const key = Math.min(v0, v1) + ',' + Math.max(v0, v1);
+                if (!edgeToFaces[key]) {
+                    edgeToFaces[key] = [];
                 }
-                return new THREE.Float32BufferAttribute(morphPositions, 3);
-            });
+                edgeToFaces[key].push(f);
+            }
         }
 
+        // 3. Filter edges (discard flat diagonals inside quads)
+        const quadIndices = [];
+        for (const key in edgeToFaces) {
+            const faces = edgeToFaces[key];
+            const parts = key.split(',').map(Number);
+            const v0 = parts[0];
+            const v1 = parts[1];
+
+            if (faces.length === 2) {
+                const n0 = faceNormals[faces[0]];
+                const n1 = faceNormals[faces[1]];
+                // Dot product
+                const dot = n0.x * n1.x + n0.y * n1.y + n0.z * n1.z;
+                
+                // If dot product is close to 1.0, they are coplanar -> skip diagonal
+                if (dot > 0.999) {
+                    continue;
+                }
+            }
+            quadIndices.push(v0, v1);
+        }
+
+        // Create new BufferGeometry with the filtered edges
+        const wireframeGeom = new THREE.BufferGeometry();
+        
+        // Preserve original attributes so that skinning and morph targets work on GPU
+        wireframeGeom.setAttribute('position', position.clone());
+        if (clonedGeom.attributes.normal) {
+            wireframeGeom.setAttribute('normal', clonedGeom.attributes.normal.clone());
+        }
+        if (clonedGeom.attributes.skinIndex) {
+            wireframeGeom.setAttribute('skinIndex', clonedGeom.attributes.skinIndex.clone());
+        }
+        if (clonedGeom.attributes.skinWeight) {
+            wireframeGeom.setAttribute('skinWeight', clonedGeom.attributes.skinWeight.clone());
+        }
+        
+        // Preserve morph targets
+        if (geometry.morphAttributes) {
+            wireframeGeom.morphAttributes = geometry.morphAttributes;
+        }
+
+        // Set the index for the LineSegments/Wireframe
+        wireframeGeom.setIndex(new THREE.BufferAttribute(new Uint32Array(quadIndices), 1));
         return wireframeGeom;
     }
 
-    // Helper method to create quad wireframe lines (for non-skinned meshes)
+    // Helper method to create quad wireframe lines
     createQuadWireframeLinesGeometry(geometry) {
-        // Similar to above but returns LineSegments geometry
-        const clonedGeom = geometry.clone();
-        const position = clonedGeom.attributes.position;
-        const index = clonedGeom.index;
-
-        // Get edge vertices (deduplicated)
-        const triIndices = index ? index.array : null;
-        const edgePairs = [];
-        const edgeSet = new Set();
-
-        if (triIndices) {
-            for (let i = 0; i < triIndices.length; i += 3) {
-                const a = triIndices[i];
-                const b = triIndices[i + 1];
-                const c = triIndices[i + 2];
-
-                // Add all triangle edges
-                const edges = [[a, b], [b, c], [c, a]];
-                for (const [v1, v2] of edges) {
-                    const key = Math.min(v1, v2) + ',' + Math.max(v1, v2);
-                    if (!edgeSet.has(key)) {
-                        edgeSet.add(key);
-                        edgePairs.push(v1, v2);
-                    }
-                }
-            }
-        } else {
-            // No index, assume triangle soup
-            const posCount = position.count;
-            for (let i = 0; i < posCount; i += 3) {
-                const a = i;
-                const b = i + 1;
-                const c = i + 2;
-
-                const edges = [[a, b], [b, c], [c, a]];
-                for (const [v1, v2] of edges) {
-                    const key = Math.min(v1, v2) + ',' + Math.max(v1, v2);
-                    if (!edgeSet.has(key)) {
-                        edgeSet.add(key);
-                        edgePairs.push(v1, v2);
-                    }
-                }
-            }
-        }
-
-        // Build vertex array
-        const vertices = [];
-        const posAttr = position;
-        const positions = posAttr.array;
-
-        for (const idx of edgePairs) {
-            const baseIdx = idx * 3;
-            vertices.push(
-                positions[baseIdx],
-                positions[baseIdx + 1],
-                positions[baseIdx + 2]
-            );
-        }
-
-        const wireframeGeom = new THREE.BufferGeometry();
-        wireframeGeom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-
-        return wireframeGeom;
+        return this.createQuadWireframeGeometry(geometry);
     }
 
     // Update the animation loop to handle quad wireframe updates for morph targets
@@ -608,14 +581,15 @@ export class USDViewport {
         try {
             let model;
 
-            if (usdaText) {
+            const isBinaryOrUsdz = filePath && (filePath.toLowerCase().endsWith('.usdz') || filePath.toLowerCase().endsWith('.usd'));
+            if (usdaText && !isBinaryOrUsdz) {
                 const arrayBuffer = new TextEncoder().encode(usdaText).buffer;
                 const parseOptions = {
                     sourcePath: `/usd/view?filename=${encodeURIComponent(filePath || 'scene.usda')}`
                 };
                 model = await this.loader.parseAsync(arrayBuffer, parseOptions);
             }
-                else if (filePath) {
+            else if (filePath) {
                 const url = `/usd/view?filename=${encodeURIComponent(filePath)}`;
                 model = await this.loader.loadAsync(url);
             } else {

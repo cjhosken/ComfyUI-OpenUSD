@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-OpenUSD"
 description = "Pixar's OpenUSD pipeline integration for ComfyUI. Natively compose and render 3D scenes within your node workflows."
-version = "0.0.8"
+version = "0.0.9"
 license = { file = "LICENSE" }
 dependencies = [] # Filled in from requirements.txt
 

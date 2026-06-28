@@ -126,12 +126,39 @@ def _usd_val(v):
     """Convert a USD value to something JSON-serialisable."""
     if v is None:
         return None
-    if hasattr(v, '__iter__') and not isinstance(v, str):
+    
+    # Check for pxr Gf types (e.g. Vec3f, Matrix4d, Color3f, Quatf)
+    typename = type(v).__name__
+    if typename.startswith(('Vec', 'Matrix', 'Quat', 'Color', 'Range', 'Rect', 'Frustum', 'Interval')):
         try:
-            return list(v)
+            if hasattr(v, '__len__'):
+                return [float(x) for x in v]
         except Exception:
             pass
-    return str(v)
+        return str(v)
+        
+    # Handle Sdf.AssetPath or other USD-specific types
+    if hasattr(v, 'path'):
+        return v.path
+        
+    # Standard JSON serializable basic types
+    if isinstance(v, (str, int, float, bool)):
+        return v
+
+    # Convert iterables recursively (e.g. VtVec3fArray, list, tuple)
+    if hasattr(v, '__iter__') and not isinstance(v, (str, bytes)):
+        try:
+            return [_usd_val(x) for x in v]
+        except Exception:
+            pass
+
+    # Fallback to string representation to ensure it is always JSON serializable
+    try:
+        import json
+        json.dumps(v)
+        return v
+    except Exception:
+        return str(v)
 
 
 def _prim_to_dict(prim):

@@ -1,4 +1,4 @@
-import { app } from "../../scripts/app.js";
+import { app } from "../../../scripts/app.js";
 
 import { createVec2Widget } from "./widgets/vec2.js";
 import { createVec3Widget } from "./widgets/vec3.js";
