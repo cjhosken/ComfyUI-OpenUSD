@@ -1,4 +1,4 @@
 usd-core==26.5
 pygltflib==1.16.5
-numpy
-trimesh
+numpy==2.5.0
+trimesh==4.12.2
