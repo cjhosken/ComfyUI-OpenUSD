@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-OpenUSD"
 description = "Pixar's OpenUSD pipeline integration for ComfyUI. Natively compose and render 3D scenes within your node workflows."
-version = "0.0.7"
+version = "0.0.8"
 license = { file = "LICENSE" }
 dependencies = [] # Filled in from requirements.txt
 
@@ -13,5 +13,5 @@ Repository = "https://github.com/cjhosken/ComfyUI-OpenUSD"
 [tool.comfy]
 PublisherId = "cjhosken"
 DisplayName = "Pixar's OpenUSD"
-Icon = "https://github.com/cjhosken/ComfyUI-OpenUSD/blob/main/icon.png"
-Banner = "https://github.com/cjhosken/ComfyUI-OpenUSD/blob/main/banner.jpg"
+Icon = "https://raw.githubusercontent.com/cjhosken/ComfyUI-OpenUSD/refs/heads/main/icon.png"
+Banner = "https://raw.githubusercontent.com/cjhosken/ComfyUI-OpenUSD/refs/heads/main/banner.jpg"
