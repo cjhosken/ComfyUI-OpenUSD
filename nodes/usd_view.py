@@ -1,6 +1,6 @@
 import os
 
-class PreviewOpenUSD:
+class PreviewUSD:
     CATEGORY = "USD"
     FUNCTION = "preview_openusd"
 

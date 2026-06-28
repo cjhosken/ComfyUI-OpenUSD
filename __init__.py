@@ -13,40 +13,40 @@ existing = server.PromptServer.instance.app._middlewares
 new_middlewares = [allow_wasm_headers] + list(existing)
 server.PromptServer.instance.app._middlewares = existing.__class__(new_middlewares)
 
-from .nodes.load_usd import LoadOpenUSD
-from .nodes.save_usd import SaveOpenUSD
-from .nodes.view_usd import PreviewOpenUSD
+from .nodes.usd_io import LoadUSD, SaveUSD
+from .nodes.usd_view import PreviewUSD
 from .nodes.usd_utils import (
-    SplitOpenUSD, CombineOpenUSD, ConvertOpenUSD,
-    MeshToOpenUSD, Model3DToOpenUSD, OpenUSDtoModel3D,
-    EditUSDPrim, ApplyUSDMaterial, AddUSDSublayer
+    SplitUSD, CombineUSD, EditUSDPrim, ApplyUSDMaterial, AddUSDSublayer
+)
+from .nodes.usd_convert import (
+    ConvertUSD, MeshToUSD, Model3DToUSD, USDtoModel3D,
 )
 
 NODE_CLASS_MAPPINGS = {
-    "LoadOpenUSD": LoadOpenUSD,
-    "SaveOpenUSD": SaveOpenUSD,
-    "PreviewOpenUSD": PreviewOpenUSD,
-    "SplitOpenUSD": SplitOpenUSD,
-    "CombineOpenUSD": CombineOpenUSD,
-    "ConvertOpenUSD": ConvertOpenUSD,
-    "MeshToOpenUSD": MeshToOpenUSD,
-    "Model3DToOpenUSD": Model3DToOpenUSD,
-    "OpenUSDtoModel3D": OpenUSDtoModel3D,
+    "LoadUSD": LoadUSD,
+    "SaveUSD": SaveUSD,
+    "PreviewUSD": PreviewUSD,
+    "SplitUSD": SplitUSD,
+    "CombineUSD": CombineUSD,
+    "ConvertUSD": ConvertUSD,
+    "MeshToUSD": MeshToUSD,
+    "Model3DToUSD": Model3DToUSD,
+    "USDtoModel3D": USDtoModel3D,
     "EditUSDPrim": EditUSDPrim,
     "ApplyUSDMaterial": ApplyUSDMaterial,
     "AddUSDSublayer": AddUSDSublayer
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadOpenUSD": "Load OpenUSD",
-    "SaveOpenUSD": "Save OpenUSD",
-    "PreviewOpenUSD": "Preview OpenUSD",
-    "SplitOpenUSD": "Split OpenUSD",
-    "CombineOpenUSD": "Combine OpenUSD",
-    "ConvertOpenUSD": "Convert OpenUSD",
-    "MeshToOpenUSD": "Mesh to OpenUSD",
-    "Model3DToOpenUSD": "Model3D to OpenUSD",
-    "OpenUSDtoModel3D": "OpenUSD to Model3D",
+    "LoadUSD": "Load USD",
+    "SaveUSD": "Save USD",
+    "PreviewUSD": "Preview USD",
+    "SplitUSD": "Split USD",
+    "CombineUSD": "Combine USD",
+    "ConvertUSD": "Convert USD",
+    "MeshToUSD": "Mesh to USD",
+    "Model3DToUSD": "Model3D to USD",
+    "USDtoModel3D": "USD to Model3D",
     "EditUSDPrim": "Edit USD Prim",
     "ApplyUSDMaterial": "USD Material",
     "AddUSDSublayer": "Add USD Sublayer"
