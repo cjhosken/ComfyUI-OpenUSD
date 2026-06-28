@@ -2,7 +2,7 @@
 name = "ComfyUI-OpenUSD"
 description = "This node pack introduces OpenUSD support for ComfyUI"
 version = "0.0.1"
-license = { file = "LICENSE.txt" }
+license = { file = "LICENSE" }
 dependencies = [
     "usd-core",
     "pygltflib",
