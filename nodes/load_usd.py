@@ -6,7 +6,7 @@ class LoadOpenUSD:
     FUNCTION = "load_openusd"
 
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("usd",)
+    RETURN_NAMES = ("USD",)
 
     @classmethod
     def INPUT_TYPES(cls):

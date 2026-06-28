@@ -1,14 +1,24 @@
 -- UI / Interface --
 1. Custom USD Socket Colors
-
+2. 3D Color Parameter
+3. Vector3 Parameter
+4. USD Stage Tree View (In the USD Viewer)
+5. Use OpenUSD or USD?
 
 -- USD Editing --
 1. Primitive Editing
+    - Control to set, block, etc.
+    - How do I handle multiple datatypes?
+
 2. Material Editing (To feed in AI Generated Textures)
+    - Images
+    - Translucency?
+
 3. Sublayering
+    - Get it working
+    - How do I setup the saving?
+
 4. Variants, Composition Arcs, Purposes
 
-
 -- USD Rendering --
-1. Better Viewport (Camera Support)
-2. USD Playblast Rendering? (With Depth?)
+2. USD Render Node (With Beauty, Normal, Depth)

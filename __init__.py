@@ -16,8 +16,11 @@ server.PromptServer.instance.app._middlewares = existing.__class__(new_middlewar
 from .nodes.load_usd import LoadOpenUSD
 from .nodes.save_usd import SaveOpenUSD
 from .nodes.view_usd import PreviewOpenUSD
-from .nodes.usd_utils import SplitOpenUSD, CombineOpenUSD
-from .nodes.convert_usd import ConvertOpenUSD
+from .nodes.usd_utils import (
+    SplitOpenUSD, CombineOpenUSD, ConvertOpenUSD,
+    MeshToOpenUSD, Model3DToOpenUSD, OpenUSDtoModel3D,
+    EditUSDPrim, ApplyUSDMaterial, AddUSDSublayer
+)
 
 NODE_CLASS_MAPPINGS = {
     "LoadOpenUSD": LoadOpenUSD,
@@ -25,7 +28,13 @@ NODE_CLASS_MAPPINGS = {
     "PreviewOpenUSD": PreviewOpenUSD,
     "SplitOpenUSD": SplitOpenUSD,
     "CombineOpenUSD": CombineOpenUSD,
-    "ConvertOpenUSD": ConvertOpenUSD
+    "ConvertOpenUSD": ConvertOpenUSD,
+    "MeshToOpenUSD": MeshToOpenUSD,
+    "Model3DToOpenUSD": Model3DToOpenUSD,
+    "OpenUSDtoModel3D": OpenUSDtoModel3D,
+    "EditUSDPrim": EditUSDPrim,
+    "ApplyUSDMaterial": ApplyUSDMaterial,
+    "AddUSDSublayer": AddUSDSublayer
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -34,7 +43,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PreviewOpenUSD": "Preview OpenUSD",
     "SplitOpenUSD": "Split OpenUSD",
     "CombineOpenUSD": "Combine OpenUSD",
-    "ConvertOpenUSD": "Convert OpenUSD"
+    "ConvertOpenUSD": "Convert OpenUSD",
+    "MeshToOpenUSD": "Mesh to OpenUSD",
+    "Model3DToOpenUSD": "Model3D to OpenUSD",
+    "OpenUSDtoModel3D": "OpenUSD to Model3D",
+    "EditUSDPrim": "Edit USD Prim",
+    "ApplyUSDMaterial": "USD Material",
+    "AddUSDSublayer": "Add USD Sublayer"
 }
 
 WEB_DIRECTORY = "./web"

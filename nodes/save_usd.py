@@ -5,7 +5,7 @@ class SaveOpenUSD:
     FUNCTION = "save_openusd"
 
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("usd",)
+    RETURN_NAMES = ("USD",)
 
     OUTPUT_NODE = True
 
@@ -13,7 +13,7 @@ class SaveOpenUSD:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "usd": ("USD",),
+                "USD": ("USD",),
                 "output_path": (
                     "STRING", 
                     {
@@ -22,29 +22,12 @@ class SaveOpenUSD:
                         "path": True,
                     },
                 ),
-                "extension": (
-                    ["usda", "usdc", "usdz"],
-                    {
-                        "default":"usda",  
-                    },
-                ),
-                "overwrite": (["True", "False"], {"default": "True"})
             }
         }
     
-    def save_openusd(self, usd, output_path, extension, overwrite):
-        usda_text = usd.get("usda_text", "")
-        extension = extension.lstrip(".")
+    def save_openusd(self, USD, output_path):
+        usda_text = USD.get("usda_text", "")
 
-        # Strip any existing extension and apply the selected one
-        output_path = f"{os.path.splitext(output_path)[0]}.{extension}"
-
-        if os.path.exists(output_path) and overwrite == "False":
-            print(f"[SaveOpenUSD] File already exists at {output_path}. Skipping save.")
-            new_usd = usd.copy()
-            new_usd["usd_path"] = output_path
-            return (new_usd,)
-        
         output_dir = os.path.dirname(output_path)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
@@ -68,7 +51,7 @@ class SaveOpenUSD:
         except Exception as e:
             raise RuntimeError(f"An error occured while saving the USD file:\n{str(e)}")
         
-        new_usd = usd.copy()
+        new_usd = USD.copy()
         new_usd["usd_path"] = output_path
         # Update usda_text with the newly exported version that contains the updated path comment
         try:

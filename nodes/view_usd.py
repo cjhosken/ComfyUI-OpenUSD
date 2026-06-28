@@ -5,7 +5,7 @@ class PreviewOpenUSD:
     FUNCTION = "preview_openusd"
 
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("usd",)
+    RETURN_NAMES = ("USD",)
 
     OUTPUT_NODE = True
 
@@ -13,13 +13,13 @@ class PreviewOpenUSD:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "usd": ("USD",),
+                "USD": ("USD",),
             }
         }
 
-    def preview_openusd(self, usd):
-        usd_path = usd.get("usd_path", "")
-        usda_text = usd.get("usda_text", "")
+    def preview_openusd(self, USD):
+        usd_path = USD.get("usd_path", "")
+        usda_text = USD.get("usda_text", "")
 
         if usd_path != "" and usda_text == "" and os.path.exists(usd_path):
             try:
@@ -40,5 +40,5 @@ class PreviewOpenUSD:
 
         return {
             "ui": {"usd_path": [usd_path], "usda_text": [usda_text]},
-            "result": (usd,)
+            "result": (USD,)
         }
