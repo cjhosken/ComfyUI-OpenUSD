@@ -608,15 +608,16 @@ export class USDViewport {
         try {
             let model;
 
-            if (filePath) {
-                const url = `/usd/view?filename=${encodeURIComponent(filePath)}`;
-                model = await this.loader.loadAsync(url);
-            } else if (usdaText) {
+            if (usdaText) {
                 const arrayBuffer = new TextEncoder().encode(usdaText).buffer;
                 const parseOptions = {
                     sourcePath: `/usd/view?filename=${encodeURIComponent(filePath || 'scene.usda')}`
                 };
                 model = await this.loader.parseAsync(arrayBuffer, parseOptions);
+            }
+                else if (filePath) {
+                const url = `/usd/view?filename=${encodeURIComponent(filePath)}`;
+                model = await this.loader.loadAsync(url);
             } else {
                 throw new Error("No USD data provided");
             }

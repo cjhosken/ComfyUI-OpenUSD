@@ -16,11 +16,17 @@ server.PromptServer.instance.app._middlewares = existing.__class__(new_middlewar
 from .nodes.usd_io import LoadUSD, SaveUSD
 from .nodes.usd_view import PreviewUSD
 from .nodes.usd_utils import (
-    SplitUSD, CombineUSD, EditUSDPrim, ApplyUSDMaterial, AddUSDSublayer
+    SplitUSD, CombineUSD, ApplyUSDMaterial
 )
 from .nodes.usd_convert import (
     ConvertUSD, MeshToUSD, Model3DToUSD, USDtoModel3D,
 )
+
+
+from .nodes.utils.prim.usd_prim_get import GetUSDPrimInfo
+from .nodes.utils.prim.usd_prim_set import SetUSDPrimInfo
+
+
 
 NODE_CLASS_MAPPINGS = {
     "LoadUSD": LoadUSD,
@@ -32,9 +38,10 @@ NODE_CLASS_MAPPINGS = {
     "MeshToUSD": MeshToUSD,
     "Model3DToUSD": Model3DToUSD,
     "USDtoModel3D": USDtoModel3D,
-    "EditUSDPrim": EditUSDPrim,
     "ApplyUSDMaterial": ApplyUSDMaterial,
-    "AddUSDSublayer": AddUSDSublayer
+
+    "SetUSDPrimInfo": SetUSDPrimInfo,
+    "GetUSDPrimInfo": GetUSDPrimInfo
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -47,9 +54,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MeshToUSD": "Mesh to USD",
     "Model3DToUSD": "Model3D to USD",
     "USDtoModel3D": "USD to Model3D",
-    "EditUSDPrim": "Edit USD Prim",
     "ApplyUSDMaterial": "USD Material",
-    "AddUSDSublayer": "Add USD Sublayer"
+
+    "SetUSDPrimInfo": "Set USD Prim Info",
+    "GetUSDPrimInfo": "Get USD Prim Info"
 }
 
 WEB_DIRECTORY = "./web"
@@ -104,5 +112,130 @@ async def serve_usd_file(request):
         return response
     else:
         return web.Response(status=404, text=f"File not found: {filename}")
+
+
+# ---- Shared helpers for prim-tree serialisation ----------------------
+
+def _usd_val(v):
+    """Convert a USD value to something JSON-serialisable."""
+    if v is None:
+        return None
+    if hasattr(v, '__iter__') and not isinstance(v, str):
+        try:
+            return list(v)
+        except Exception:
+            pass
+    return str(v)
+
+
+def _prim_to_dict(prim):
+    children = [_prim_to_dict(child) for child in prim.GetChildren()]
+
+    attributes = {}
+    for attr in prim.GetAttributes():
+        try:
+            val = attr.Get()
+            attributes[attr.GetName()] = {
+                "type": str(attr.GetTypeName()),
+                "value": _usd_val(val),
+            }
+        except Exception:
+            pass
+
+    metadata = {}
+    try:
+        for key in prim.GetAllMetadata():
+            try:
+                metadata[key] = _usd_val(prim.GetMetadata(key))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return {
+        "name": prim.GetName() or "/",
+        "path": str(prim.GetPath()),
+        "type": prim.GetTypeName() or "Prim",
+        "active": prim.IsActive(),
+        "children": children,
+        "attributes": attributes,
+        "metadata": metadata,
+    }
+
+
+def _build_prim_payload(stage):
+    pseudo_root = stage.GetPseudoRoot()
+    return {
+        "name": "/",
+        "path": "/",
+        "type": "Stage",
+        "active": True,
+        "children": [_prim_to_dict(p) for p in pseudo_root.GetChildren()],
+        "attributes": {},
+        "metadata": {},
+    }
+
+
+def _json_response(payload):
+    import json
+    return web.Response(
+        content_type="application/json",
+        text=json.dumps(payload),
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
+
+
+# ---- GET /usd/prims?filename=<path> ------------------------------------
+
+@server.PromptServer.instance.routes.get("/usd/prims")
+async def serve_usd_prims_get(request):
+    """Return a full JSON prim-tree for a given USD file path."""
+    from pxr import Usd
+    filename = request.query.get("filename")
+    if not filename:
+        return web.Response(status=400, text="Missing filename")
+
+    filename = os.path.abspath(filename)
+    resolved = resolve_case_insensitive(filename)
+    if not resolved or not os.path.exists(resolved):
+        return web.Response(status=404, text=f"File not found: {filename}")
+
+    try:
+        stage = Usd.Stage.Open(resolved)
+        return _json_response(_build_prim_payload(stage))
+    except Exception as e:
+        import traceback
+        return web.Response(status=500, text=f"USD prim traversal failed: {e}\n{traceback.format_exc()}")
+
+
+# ---- POST /usd/prims  (body = raw USDA text) --------------------------
+
+@server.PromptServer.instance.routes.post("/usd/prims")
+async def serve_usd_prims_post(request):
+    """Return a full JSON prim-tree from raw USDA text sent in the request body."""
+    import uuid, tempfile
+    from pxr import Usd
+
+    try:
+        usda_text = await request.text()
+        if not usda_text.strip():
+            return web.Response(status=400, text="Empty USDA body")
+
+        # Write to a temp file so OpenUSD can open it
+        tmp_path = os.path.join(tempfile.gettempdir(), f"comfyusd_tree_{uuid.uuid4().hex}.usda")
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(usda_text)
+            stage = Usd.Stage.Open(tmp_path)
+            return _json_response(_build_prim_payload(stage))
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+    except Exception as e:
+        import traceback
+        return web.Response(status=500, text=f"USD prim traversal failed: {e}\n{traceback.format_exc()}")
+
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']

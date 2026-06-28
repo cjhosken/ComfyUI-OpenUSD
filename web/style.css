@@ -1,0 +1,279 @@
+/* ============================================================
+   ComfyUI-USD  –  Global widget styles
+   ============================================================ */
+
+:root {
+    --usd-bg-deep:    #0d0d10;
+    --usd-bg-base:    #141418;
+    --usd-bg-surface: #1c1c22;
+    --usd-bg-raised:  #242430;
+    --usd-border:     #2e2e3a;
+    --usd-accent:     #7c6af7;
+    --usd-accent-dim: #4f46a0;
+    --usd-text:       #d4d4d8;
+    --usd-text-muted: #71717a;
+    --usd-text-dim:   #52525b;
+    --usd-green:      #34d399;
+    --usd-yellow:     #fbbf24;
+    --usd-blue:       #60a5fa;
+    --usd-purple:     #a78bfa;
+    --usd-red:        #f43f5e;
+    --usd-radius:     6px;
+    --usd-radius-sm:  3px;
+    --usd-font-mono:  'JetBrains Mono', 'Fira Mono', 'Cascadia Code', monospace;
+    --usd-font-ui:    'Inter', system-ui, sans-serif;
+}
+
+/* ---- Shared button ---------------------------------------- */
+.comfy-usd-btn {
+    background: var(--usd-bg-raised);
+    color: var(--usd-text);
+    border: 1px solid var(--usd-border);
+    border-radius: var(--usd-radius-sm);
+    padding: 3px 10px;
+    font-size: 10px;
+    font-family: var(--usd-font-ui);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+    user-select: none;
+}
+.comfy-usd-btn:hover {
+    background: var(--usd-accent-dim);
+    border-color: var(--usd-accent);
+    color: #fff;
+}
+.comfy-usd-btn:active {
+    background: var(--usd-accent);
+}
+
+/* ---- Select dropdowns ------------------------------------- */
+.comfy-usd-select {
+    background: rgba(20, 20, 24, 0.85);
+    color: var(--usd-text);
+    border: 1px solid var(--usd-border);
+    border-radius: var(--usd-radius-sm);
+    padding: 2px 6px;
+    font-size: 10px;
+    font-family: var(--usd-font-ui);
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: border-color 0.15s;
+}
+.comfy-usd-select:hover,
+.comfy-usd-select:focus {
+    border-color: var(--usd-accent);
+    outline: none;
+}
+.comfy-usd-select option {
+    background: var(--usd-bg-base);
+    color: var(--usd-text);
+}
+
+/* ---- Timeline bar ----------------------------------------- */
+.comfy-usd-timeline {
+    background: rgba(13, 13, 16, 0.82);
+    border: 1px solid var(--usd-border);
+    border-radius: var(--usd-radius);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+}
+
+/* ---- Range slider ----------------------------------------- */
+.comfy-usd-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 3px;
+    background: var(--usd-bg-raised);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+.comfy-usd-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--usd-accent);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.comfy-usd-slider::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--usd-accent);
+    border: none;
+    cursor: pointer;
+}
+
+/* ---- Tree view -------------------------------------------- */
+.usd-tree-container {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background: var(--usd-bg-base);
+    color: var(--usd-text);
+    font-family: var(--usd-font-mono);
+    font-size: 11px;
+    padding: 6px 4px;
+    box-sizing: border-box;
+    user-select: none;
+}
+.usd-tree-container::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+.usd-tree-container::-webkit-scrollbar-track {
+    background: var(--usd-bg-deep);
+}
+.usd-tree-container::-webkit-scrollbar-thumb {
+    background: var(--usd-border);
+    border-radius: 2px;
+}
+
+.usd-tree-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 4px;
+    border-radius: var(--usd-radius-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s;
+    min-height: 20px;
+}
+.usd-tree-row:hover {
+    background: var(--usd-bg-raised);
+}
+.usd-tree-row.selected {
+    background: var(--usd-accent-dim);
+    outline: 1px solid var(--usd-accent);
+}
+
+.usd-tree-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--usd-text-muted);
+    font-size: 8px;
+    border-radius: 2px;
+    transition: color 0.1s;
+}
+.usd-tree-toggle:hover {
+    color: var(--usd-text);
+}
+.usd-tree-icon {
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+    font-size: 10px;
+}
+.usd-tree-label {
+    color: var(--usd-blue);
+    flex-shrink: 0;
+}
+.usd-tree-type {
+    color: var(--usd-purple);
+    font-size: 9px;
+    margin-left: 5px;
+    opacity: 0.8;
+}
+.usd-tree-children {
+    /* indent is applied inline via padding-left */
+}
+
+/* ---- Info / attributes panel ------------------------------ */
+.usd-info-panel {
+    width: 100%;
+    overflow: auto;
+    background: var(--usd-bg-deep);
+    border-top: 1px solid var(--usd-border);
+    padding: 6px 8px;
+    box-sizing: border-box;
+    font-family: var(--usd-font-mono);
+    font-size: 10px;
+    color: var(--usd-text-muted);
+    display: none;
+}
+.usd-info-panel::-webkit-scrollbar {
+    width: 4px;
+}
+.usd-info-panel::-webkit-scrollbar-thumb {
+    background: var(--usd-border);
+    border-radius: 2px;
+}
+
+.usd-attr-section-title {
+    color: var(--usd-text-dim);
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    padding: 4px 0 2px;
+    border-bottom: 1px solid var(--usd-border);
+    margin-bottom: 2px;
+}
+.usd-attr-row {
+    display: flex;
+    gap: 6px;
+    padding: 1px 0;
+    border-bottom: 1px solid rgba(46, 46, 58, 0.4);
+    align-items: baseline;
+}
+.usd-attr-name {
+    color: var(--usd-green);
+    min-width: 110px;
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.usd-attr-type {
+    color: var(--usd-purple);
+    font-size: 9px;
+    min-width: 50px;
+    flex-shrink: 0;
+    opacity: 0.75;
+}
+.usd-attr-value {
+    color: var(--usd-yellow);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.usd-empty-msg {
+    color: var(--usd-text-dim);
+    text-align: center;
+    padding: 16px 8px;
+    font-size: 10px;
+}
+
+/* ---- Tree toolbar ----------------------------------------- */
+.usd-tree-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    background: var(--usd-bg-deep);
+    border-bottom: 1px solid var(--usd-border);
+    flex-shrink: 0;
+}
+.usd-tree-toolbar-title {
+    flex: 1;
+    font-size: 9px;
+    font-family: var(--usd-font-ui);
+    color: var(--usd-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}

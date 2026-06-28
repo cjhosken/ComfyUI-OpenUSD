@@ -1,7 +1,7 @@
 import os
 
 class PreviewUSD:
-    CATEGORY = "USD"
+    CATEGORY = "3d/USD"
     FUNCTION = "preview_openusd"
 
     RETURN_TYPES = ("USD",)

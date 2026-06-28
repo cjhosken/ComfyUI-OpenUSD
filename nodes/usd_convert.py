@@ -3,7 +3,7 @@ import folder_paths
 import tempfile
 
 class ConvertUSD:
-    CATEGORY = "USD"
+    CATEGORY = "3d/USD"
     FUNCTION = "convert_openusd"
 
     RETURN_TYPES = ("USD", "STRING", "STRING",)
@@ -217,7 +217,7 @@ class ConvertUSD:
         return (final_usd, final_glb, final_obj)
 
 class MeshToUSD:
-    CATEGORY = "USD"
+    CATEGORY = "3d/USD"
     FUNCTION = "mesh_to_usd"
 
     RETURN_TYPES = ("USD",)
@@ -300,7 +300,7 @@ class MeshToUSD:
         return ({"usd_path": temp_path, "usda_text": usda_text},)
 
 class Model3DToUSD:
-    CATEGORY = "USD"
+    CATEGORY = "3d/USD"
     FUNCTION = "model3d_to_usd"
 
     RETURN_TYPES = ("USD",)
@@ -367,7 +367,7 @@ class Model3DToUSD:
         return ({"usd_path": temp_path, "usda_text": usda_text},)
 
 class USDtoModel3D:
-    CATEGORY = "USD"
+    CATEGORY = "3d/USD"
     FUNCTION = "usd_to_model3d"
 
     RETURN_TYPES = ("MODEL3D",)

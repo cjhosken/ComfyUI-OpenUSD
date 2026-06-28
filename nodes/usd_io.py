@@ -1,7 +1,7 @@
 import os
 
 class LoadUSD:
-    CATEGORY = "USD"
+    CATEGORY = "3d/USD"
     FUNCTION = "load_openusd"
 
     RETURN_TYPES = ("USD",)
@@ -47,7 +47,7 @@ class LoadUSD:
         return ({"usd_path": usd_path, "usda_text": usda_text},)
 
 class SaveUSD:
-    CATEGORY = "USD"
+    CATEGORY = "3d/USD"
     FUNCTION = "save_openusd"
 
     RETURN_TYPES = ("USD",)
