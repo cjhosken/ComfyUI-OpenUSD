@@ -33,19 +33,56 @@ app.registerExtension({
 
             // Attach widgets based on input type
             for (const input of this.inputs || []) {
-                if (input.type === "VEC2") {
-                    const w = createVec2Widget(this, input.name);
-                    this.widgets.push(w);
-                }
+                if (input.type === "VEC2" || input.type === "VEC3" || input.type === "COLOR") {
+                    const w = input.type === "VEC2" ? createVec2Widget(this, input.name) :
+                              input.type === "VEC3" ? createVec3Widget(this, input.name) :
+                                                      createColorWidget(this, input.name);
 
-                if (input.type === "VEC3") {
-                    const w = createVec3Widget(this, input.name);
-                    this.widgets.push(w);
-                }
+                    // Create and prepend a label
+                    const label = document.createElement("span");
+                    label.textContent = input.name + ":";
+                    label.style.cssText = `
+                        width: 75px;
+                        font-size: 10px;
+                        color: #bbb;
+                        font-family: monospace;
+                        text-align: right;
+                        margin-right: 6px;
+                        text-overflow: ellipsis;
+                        overflow: hidden;
+                        white-space: nowrap;
+                    `;
+                    w.element.insertBefore(label, w.element.firstChild);
+                    w.element.style.marginBottom = "4px";
 
-                if (input.type === "COLOR") {
-                    const w = createColorWidget(this, input.name);
-                    this.widgets.push(w);
+                    this.addDOMWidget(input.name, "HTML", w.element, {
+                        getValue: w.get,
+                        setValue: w.set,
+                        serializeValue: w.serializeValue
+                    });
+
+                    // Helper to update disabled state based on connection
+                    const updateConnectedState = () => {
+                        const inputSlot = this.inputs.find(inp => inp.name === input.name);
+                        const isConnected = inputSlot && inputSlot.link !== null;
+                        
+                        const els = w.element.querySelectorAll("input");
+                        els.forEach(el => {
+                            el.disabled = isConnected;
+                            el.style.opacity = isConnected ? "0.35" : "1.0";
+                            el.style.cursor = isConnected ? "not-allowed" : "auto";
+                        });
+                        label.style.opacity = isConnected ? "0.4" : "1.0";
+                    };
+
+                    // Hook connection changes
+                    const originalConnectionsChange = this.onConnectionsChange;
+                    this.onConnectionsChange = function(type, index, connected, link_info, input_info) {
+                        originalConnectionsChange?.apply(this, arguments);
+                        updateConnectedState();
+                    };
+
+                    setTimeout(updateConnectedState, 50);
                 }
             }
 

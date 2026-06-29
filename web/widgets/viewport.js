@@ -60,7 +60,7 @@ export class USDViewport {
             this.camera = new THREE.PerspectiveCamera(45, this.width / this.height, 0.1, 1000);
             this.camera.position.set(0, 0, 5);
 
-            this.renderer = new THREE.WebGLRenderer({ antialias: true });
+            this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
             this.renderer.setSize(this.width, this.height);
             this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             this.renderer.domElement.style.pointerEvents = "auto";
@@ -573,6 +573,9 @@ export class USDViewport {
     }
 
     async loadUSD(filePath, usdaText = null) {
+        this.currentModelPath = filePath || null;
+        this.currentUsdaText = usdaText || null;
+
         if (this.currentModel) {
             this.scene.remove(this.currentModel);
             this.currentModel = null;

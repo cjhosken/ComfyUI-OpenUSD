@@ -1,7 +1,7 @@
 import folder_paths
 
 class SetUSDPrimInfo:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/Prim"
     FUNCTION = "set_info"
     RETURN_TYPES = ("USD",)
     RETURN_NAMES = ("USD",)
@@ -22,7 +22,7 @@ class SetUSDPrimInfo:
         import os
         import uuid
         
-        usd_path = USD.get("usd_path", "")
+        usd_path = USD.get("usd_info", "")
         usda_text = USD.get("usda_text", "")
 
         temp_dir = folder_paths.get_temp_directory()
@@ -54,7 +54,7 @@ class SetUSDPrimInfo:
                 self.apply_prim_info(prim, prim_info, action)
             
             new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_path": usd_path, "usda_text": new_usda_text},)
+            return ({"usd_info": usd_path, "usda_text": new_usda_text},)
             
         except Exception as e:
             print(f"Error in SetPrimInfo: {e}")
@@ -302,3 +302,213 @@ class SetUSDPrimInfo:
             if value.startswith("/"):
                 return Sdf.Path(value)
         return value
+
+class SetUSDAttribute:
+    CATEGORY = "3d/USD/Attribute"
+    FUNCTION = "set_attribute"
+    RETURN_TYPES = ("USD",)
+    RETURN_NAMES = ("USD",)
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        usd_types = [
+            "string", "token", "asset", "bool", "int", "float", "double",
+            "float2", "float3", "float4", "double2", "double3", "double4",
+            "color3f", "color4f", "point3f", "vector3f", "normal3f", "matrix4d", "quatf",
+            "string[]", "token[]", "int[]", "float[]", "double[]", "float3[]", "color3f[]", "matrix4d[]"
+        ]
+        return {
+            "required": {
+                "USD": ("USD",),
+                "prim_path": ("STRING", {"default": "/Root/Mesh"}),
+                "attribute_name": ("STRING", {"default": "myAttribute"}),
+                "attribute_type": (usd_types,),
+                "value": ("*",),
+            }
+        }
+
+    def cast_value_to_usd_type(self, value, type_name):
+        from pxr import Gf, Sdf, Tf
+        import json
+        
+        if value is None:
+            return None
+
+        # Parse stringified lists/dicts
+        if isinstance(value, str):
+            val_stripped = value.strip()
+            if (val_stripped.startswith("[") and val_stripped.endswith("]")) or (val_stripped.startswith("{") and val_stripped.endswith("}")):
+                try:
+                    value = json.loads(val_stripped)
+                except Exception:
+                    pass
+
+        # Handle arrays recursively
+        if type_name.isArray:
+            element_type = type_name.scalarType
+            if not isinstance(value, (list, tuple)):
+                value = [value]
+            return [self.cast_value_to_usd_type(v, element_type) for v in value]
+
+        # Get C++ or alias type name for classification
+        tname = type_name.aliases[0] if type_name.aliases else type_name.cppName
+
+        # 3D Vector types
+        if any(x in tname for x in ["Vec3", "Color3", "Point3", "Normal3"]):
+            if isinstance(value, (list, tuple)):
+                parts = [float(x) for x in value[:3]]
+            elif isinstance(value, (int, float)):
+                parts = [float(value)] * 3
+            elif isinstance(value, str):
+                cleaned = value.replace("(", "").replace(")", "")
+                parts = [float(x.strip()) for x in cleaned.split(",")]
+            else:
+                parts = [0.0, 0.0, 0.0]
+            while len(parts) < 3:
+                parts.append(0.0)
+            if "Vec3f" in tname or "Color3f" in tname or "Point3f" in tname or "Normal3f" in tname:
+                return Gf.Vec3f(parts[0], parts[1], parts[2])
+            else:
+                return Gf.Vec3d(parts[0], parts[1], parts[2])
+
+        # 2D Vector types
+        if "Vec2" in tname:
+            if isinstance(value, (list, tuple)):
+                parts = [float(x) for x in value[:2]]
+            elif isinstance(value, (int, float)):
+                parts = [float(value)] * 2
+            elif isinstance(value, str):
+                cleaned = value.replace("(", "").replace(")", "")
+                parts = [float(x.strip()) for x in cleaned.split(",")]
+            else:
+                parts = [0.0, 0.0]
+            while len(parts) < 2:
+                parts.append(0.0)
+            if "Vec2f" in tname:
+                return Gf.Vec2f(parts[0], parts[1])
+            else:
+                return Gf.Vec2d(parts[0], parts[1])
+
+        # 4D Vector/Quat types
+        if any(x in tname for x in ["Vec4", "Color4", "Quat"]):
+            if isinstance(value, (list, tuple)):
+                parts = [float(x) for x in value[:4]]
+            elif isinstance(value, (int, float)):
+                parts = [float(value)] * 4
+            elif isinstance(value, str):
+                cleaned = value.replace("(", "").replace(")", "")
+                parts = [float(x.strip()) for x in cleaned.split(",")]
+            else:
+                parts = [0.0, 0.0, 0.0, 1.0]
+            while len(parts) < 4:
+                parts.append(0.0)
+            if "Vec4f" in tname or "Color4f" in tname or "Quatf" in tname:
+                return Gf.Vec4f(parts[0], parts[1], parts[2], parts[3])
+            else:
+                return Gf.Vec4d(parts[0], parts[1], parts[2], parts[3])
+
+        # Matrix types
+        if "Matrix4" in tname:
+            if isinstance(value, (list, tuple)):
+                flat = [float(x) for x in value[:16]]
+            else:
+                flat = [0.0] * 16
+            while len(flat) < 16:
+                flat.append(0.0)
+            if "Matrix4f" in tname:
+                return Gf.Matrix4f(*flat)
+            else:
+                return Gf.Matrix4d(*flat)
+
+        # Basic types
+        if type_name == Sdf.ValueTypeNames.Bool:
+            if isinstance(value, str):
+                return value.lower() in ("true", "1", "yes", "on")
+            return bool(value)
+        elif type_name in (Sdf.ValueTypeNames.Int, Sdf.ValueTypeNames.Int64, Sdf.ValueTypeNames.UInt, Sdf.ValueTypeNames.UInt64):
+            return int(value)
+        elif type_name in (Sdf.ValueTypeNames.Float, Sdf.ValueTypeNames.Double, Sdf.ValueTypeNames.Half):
+            return float(value)
+        elif type_name == Sdf.ValueTypeNames.Token:
+            return Tf.Token(str(value).strip())
+        elif type_name == Sdf.ValueTypeNames.Asset:
+            return Sdf.AssetPath(str(value).strip())
+
+        return str(value)
+
+    def set_attribute(self, USD, prim_path, attribute_name, attribute_type, value):
+        from pxr import Usd, Sdf, Gf
+        import os
+        import uuid
+        import fnmatch
+        import folder_paths
+
+        usd_path = USD.get("usd_info", "")
+        usda_text = USD.get("usda_text", "")
+
+        temp_dir = folder_paths.get_temp_directory()
+        os.makedirs(temp_dir, exist_ok=True)
+        out_path = os.path.join(temp_dir, f"set_attr_{uuid.uuid4().hex}.usda")
+
+        temp_in = None
+        if not usd_path or not os.path.exists(usd_path):
+            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
+            with open(temp_in, "w") as f:
+                f.write(usda_text)
+            usd_path = temp_in
+
+        try:
+            if not prim_path.startswith("/"):
+                prim_path = "/" + prim_path
+
+            stage = Usd.Stage.Open(usd_path)
+
+            # Resolve target prims with wildcard matching
+            matched_prims = []
+            if "*" in prim_path or "?" in prim_path:
+                for p in stage.Traverse():
+                    if fnmatch.fnmatch(str(p.GetPath()), prim_path):
+                        matched_prims.append(p)
+            else:
+                prim = stage.GetPrimAtPath(prim_path)
+                if prim.IsValid():
+                    matched_prims.append(prim)
+                else:
+                    prim = stage.DefinePrim(prim_path, "Xform")
+                    matched_prims.append(prim)
+
+            # Map alias type string to Sdf type
+            alias_map = {
+                "Vec3f": "float3",
+                "Vec3d": "double3",
+            }
+            resolved_type_str = alias_map.get(attribute_type, attribute_type)
+            type_name = Sdf.GetValueTypeByName(resolved_type_str)
+            if not type_name:
+                type_name = Sdf.ValueTypeNames.String
+
+            # Type cast the value
+            try:
+                typed_val = self.cast_value_to_usd_type(value, type_name)
+            except Exception as e:
+                print(f"[SetUSDAttribute] Value conversion failed for type {attribute_type}: {e}")
+                raise ValueError(f"Failed to convert value to type {attribute_type}: {e}")
+
+            for prim in matched_prims:
+                if attribute_name.strip():
+                    attr = prim.GetAttribute(attribute_name)
+                    if not attr.IsValid():
+                        attr = prim.CreateAttribute(attribute_name, type_name)
+                    attr.Set(typed_val)
+
+            stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_path)}"
+            stage.GetRootLayer().Export(out_path)
+            new_usda_text = stage.GetRootLayer().ExportToString()
+            return ({"usd_info": out_path, "usda_text": new_usda_text},)
+
+        finally:
+            if temp_in and os.path.exists(temp_in):
+                try:
+                    os.remove(temp_in)
+                except:
+                    pass

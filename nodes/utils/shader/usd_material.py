@@ -2,7 +2,7 @@ import os
 import folder_paths
 
 class ApplyUSDMaterial:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/Shader"
     FUNCTION = "apply_material"
     RETURN_TYPES = ("USD",)
     RETURN_NAMES = ("USD",)

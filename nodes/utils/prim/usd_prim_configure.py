@@ -1,7 +1,7 @@
 import folder_paths
 
 class ConfigureUSDPrim:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/Prim"
     FUNCTION = "configure_prim"
     RETURN_TYPES = ("USD",)
     RETURN_NAMES = ("USD",)
@@ -26,7 +26,7 @@ class ConfigureUSDPrim:
         import os
         import uuid
 
-        usd_path = USD.get("usd_path", "")
+        usd_path = USD.get("usd_info", "")
         usda_text = USD.get("usda_text", "")
 
         temp_dir = folder_paths.get_temp_directory()
@@ -103,7 +103,7 @@ class ConfigureUSDPrim:
 
             # Return the updated USD dict
             return ({
-                "usd_path": usd_path,
+                "usd_info": usd_path,
                 "usda_text": new_usda_text
             },)
 

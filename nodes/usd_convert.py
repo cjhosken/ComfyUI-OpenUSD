@@ -3,7 +3,7 @@ import folder_paths
 import tempfile
 
 class ConvertUSD:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/Conversion"
     FUNCTION = "convert_openusd"
 
     RETURN_TYPES = ("USD", "STRING", "STRING",)
@@ -14,20 +14,20 @@ class ConvertUSD:
         return {
             "required": {
                 "output_name": ("STRING", {"default": "converted_model"}),
-                "overwrite": (["True", "False"], {"default": "True"})
             },
             "optional": {
                 "USD": ("USD",),
-                "glb": ("STRING", {"default": "", "path": True}),
-                "obj": ("STRING", {"default": "", "path": True}),
+                "glb": ("STRING", {"forceInput": True}),
+                "obj": ("STRING", {"forceInput": True}),
             }
         }
 
-    def convert_openusd(self, output_name, overwrite, USD=None, glb="", obj=""):
+    def convert_openusd(self, output_name, USD=None, glb="", obj=""):
         import trimesh
         from pxr import Usd, UsdGeom, Vt, Gf
         import numpy as np
 
+        overwrite = "True"
         source_path = ""
         source_type = ""
         usd_input = None
@@ -35,7 +35,7 @@ class ConvertUSD:
         if USD is not None:
             source_type = "USD"
             usd_input = USD
-            source_path = USD.get("usd_path", "")
+            source_path = USD.get("usd_info", "")
         elif glb != "":
             source_type = "glb"
             source_path = glb
@@ -68,7 +68,7 @@ class ConvertUSD:
             source_path = temp_usd_path
 
         try:
-            usd_output = {"usd_path": "", "usda_text": ""}
+            usd_output = {"usd_info": "", "usda_text": ""}
             if source_type != "USD":
                 if overwrite == "True" or not os.path.exists(out_usd_path):
                     mesh_or_scene = trimesh.load(source_path)
@@ -111,13 +111,13 @@ class ConvertUSD:
                     elif isinstance(mesh_or_scene, trimesh.Trimesh):
                         add_mesh_to_stage(stage, "/Root/Mesh", mesh_or_scene)
 
-                    stage.GetRootLayer().comment = f"usd_path: {os.path.abspath(out_usd_path)}"
+                    stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_usd_path)}"
                     stage.Save()
 
                 if os.path.exists(out_usd_path):
                     stage = Usd.Stage.Open(out_usd_path)
                     usda_text = stage.GetRootLayer().ExportToString()
-                    usd_output = {"usd_path": out_usd_path, "usda_text": usda_text}
+                    usd_output = {"usd_info": out_usd_path, "usda_text": usda_text}
             else:
                 usd_output = usd_input
 
@@ -210,14 +210,14 @@ class ConvertUSD:
                 except:
                     pass
 
-        final_usd = usd_output if source_type == "USD" or os.path.exists(out_usd_path) else {"usd_path": "", "usda_text": ""}
+        final_usd = usd_output if source_type == "USD" or os.path.exists(out_usd_path) else {"usd_info": "", "usda_text": ""}
         final_glb = out_glb_path if os.path.exists(out_glb_path) else ""
         final_obj = out_obj_path if os.path.exists(out_obj_path) else ""
 
         return (final_usd, final_glb, final_obj)
 
 class MeshToUSD:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/Conversion"
     FUNCTION = "mesh_to_usd"
 
     RETURN_TYPES = ("USD",)
@@ -293,14 +293,14 @@ class MeshToUSD:
         mesh_prim.GetFaceVertexCountsAttr().Set(usd_counts)
         mesh_prim.GetFaceVertexIndicesAttr().Set(usd_indices)
 
-        stage.GetRootLayer().comment = f"usd_path: {os.path.abspath(temp_path)}"
+        stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(temp_path)}"
         stage.Save()
 
         usda_text = stage.GetRootLayer().ExportToString()
-        return ({"usd_path": temp_path, "usda_text": usda_text},)
+        return ({"usd_info": temp_path, "usda_text": usda_text},)
 
 class Model3DToUSD:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/Conversion"
     FUNCTION = "model3d_to_usd"
 
     RETURN_TYPES = ("USD",)
@@ -360,14 +360,14 @@ class Model3DToUSD:
         elif isinstance(mesh_or_scene, trimesh.Trimesh):
             add_mesh_to_stage(stage, "/Root/Mesh", mesh_or_scene)
 
-        stage.GetRootLayer().comment = f"usd_path: {os.path.abspath(temp_path)}"
+        stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(temp_path)}"
         stage.Save()
 
         usda_text = stage.GetRootLayer().ExportToString()
-        return ({"usd_path": temp_path, "usda_text": usda_text},)
+        return ({"usd_info": temp_path, "usda_text": usda_text},)
 
 class USDtoModel3D:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/Conversion"
     FUNCTION = "usd_to_model3d"
 
     RETURN_TYPES = ("MODEL3D",)
@@ -388,7 +388,7 @@ class USDtoModel3D:
         import uuid
 
         usda_text = USD.get("usda_text", "")
-        usd_path = USD.get("usd_path", "")
+        usd_path = USD.get("usd_info", "")
 
         source_path = usd_path
         temp_usd_path = None

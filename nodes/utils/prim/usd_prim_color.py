@@ -1,7 +1,7 @@
 import folder_paths
 
 class SetUSDPrimDisplayColor:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/Prim"
     FUNCTION = "set_display_color"
     RETURN_TYPES = ("USD",)
     RETURN_NAMES = ("USD",)
@@ -27,7 +27,7 @@ class SetUSDPrimDisplayColor:
         import os
         import uuid
 
-        usd_path = USD.get("usd_path", "")
+        usd_path = USD.get("usd_info", "")
         usda_text = USD.get("usda_text", "")
 
         temp_dir = folder_paths.get_temp_directory()
@@ -97,7 +97,7 @@ class SetUSDPrimDisplayColor:
             new_usda_text = stage.GetRootLayer().ExportToString()
 
             return ({
-                "usd_path": usd_path,
+                "usd_info": usd_path,
                 "usda_text": new_usda_text
             },)
 
@@ -124,6 +124,13 @@ class SetUSDPrimDisplayColor:
         try:
             # Handle different color formats
             color_string = color_string.strip()
+            
+            # Support standard hex color string format (e.g. #ffffff)
+            if color_string.startswith("#") and len(color_string) == 7:
+                r = int(color_string[1:3], 16) / 255.0
+                g = int(color_string[3:5], 16) / 255.0
+                b = int(color_string[5:7], 16) / 255.0
+                return Gf.Vec3f(r, g, b)
             
             # Try comma-separated values
             if "," in color_string:

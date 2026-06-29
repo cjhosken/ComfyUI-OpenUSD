@@ -1,7 +1,7 @@
 import os
 
 class LoadUSD:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/IO"
     FUNCTION = "load_openusd"
 
     RETURN_TYPES = ("USD",)
@@ -11,7 +11,7 @@ class LoadUSD:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "usd_path": (
+                "usd_info": (
                     "STRING",
                     {
                         "default":"path/to/file.usd",
@@ -22,15 +22,15 @@ class LoadUSD:
             }
         }
     
-    def load_openusd(self, usd_path):
-        if not os.path.exists(usd_path):
-            raise FileNotFoundError(f"USD file not found at {usd_path}")
+    def load_openusd(self, usd_info):
+        if not os.path.exists(usd_info):
+            raise FileNotFoundError(f"USD file not found at {usd_info}")
         
         usda_text = ""
         try:
             from pxr import Usd
 
-            stage = Usd.Stage.Open(usd_path)
+            stage = Usd.Stage.Open(usd_info)
             if stage:
                 usda_text = stage.GetRootLayer().ExportToString()
             else:
@@ -44,10 +44,10 @@ class LoadUSD:
         except Exception as e:
             usda_text = f"An error occured while processing the USD file:\n{str(e)}"
         
-        return ({"usd_path": usd_path, "usda_text": usda_text},)
+        return ({"usd_info": usd_info, "usda_text": usda_text},)
 
 class SaveUSD:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/IO"
     FUNCTION = "save_openusd"
 
     RETURN_TYPES = ("USD",)
@@ -86,6 +86,17 @@ class SaveUSD:
             
             stage = Usd.Stage.CreateInMemory()
             stage.GetRootLayer().ImportFromString(usda_text)
+            
+            # Clean temporary session sublayers (like LayerBreakUSD paths)
+            sublayers = list(stage.GetRootLayer().subLayerPaths)
+            clean_sublayers = []
+            for path in sublayers:
+                norm_path = path.replace("\\", "/").lower()
+                if "/tmp/" in norm_path or "layer_break" in norm_path or "temp_in" in norm_path or "temp_parent" in norm_path or "temp_sub" in norm_path:
+                    continue
+                clean_sublayers.append(path)
+            
+            stage.GetRootLayer().subLayerPaths = clean_sublayers
             stage.GetRootLayer().Export(output_path)
             print(f"[SaveUSD] Successfully saved USD stage to {output_path}")
 
@@ -98,7 +109,7 @@ class SaveUSD:
             raise RuntimeError(f"An error occured while saving the USD file:\n{str(e)}")
         
         new_usd = USD.copy()
-        new_usd["usd_path"] = output_path
+        new_usd["usd_info"] = output_path
         try:
             new_usd["usda_text"] = stage.GetRootLayer().ExportToString()
         except Exception:

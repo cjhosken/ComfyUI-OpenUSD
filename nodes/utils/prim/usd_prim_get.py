@@ -1,7 +1,7 @@
 import folder_paths
 
 class GetUSDPrimInfo:
-    CATEGORY = "3d/USD"
+    CATEGORY = "3d/USD/Prim"
     FUNCTION = "get_info"
     RETURN_TYPES = ("USD", "STRING",)
     RETURN_NAMES = ("USD", "prim_info_json",)
@@ -28,7 +28,7 @@ class GetUSDPrimInfo:
         import fnmatch
         import uuid
         
-        usd_path = USD.get("usd_path", "")
+        usd_path = USD.get("usd_info", "")
         usda_text = USD.get("usda_text", "")
         
         temp_dir = folder_paths.get_temp_directory()
@@ -422,3 +422,137 @@ class GetUSDPrimInfo:
             return str(obj)
         except:
             return str(obj)
+
+class GetUSDAttribute:
+    CATEGORY = "3d/USD/Attribute"
+    FUNCTION = "get_attribute"
+    RETURN_TYPES = ("*",)
+    RETURN_NAMES = ("value",)
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        usd_types = [
+            "string", "token", "asset", "bool", "int", "float", "double",
+            "float2", "float3", "float4", "double2", "double3", "double4",
+            "color3f", "color4f", "point3f", "vector3f", "normal3f", "matrix4d", "quatf",
+            "string[]", "token[]", "int[]", "float[]", "double[]", "float3[]", "color3f[]", "matrix4d[]"
+        ]
+        return {
+            "required": {
+                "USD": ("USD",),
+                "prim_path": ("STRING", {"default": "/Root/Mesh"}),
+                "attribute_name": ("STRING", {"default": "myAttribute"}),
+                "attribute_type": (usd_types,),
+            }
+        }
+
+    def cast_usd_value_to_python(self, val, type_name):
+        from pxr import Gf, Sdf
+        
+        if val is None:
+            return None
+
+        # Handle arrays
+        if type_name.isArray:
+            element_type = type_name.scalarType
+            return [self.cast_usd_value_to_python(item, element_type) for item in val]
+
+        # Get C++ or alias type name
+        tname = type_name.aliases[0] if type_name.aliases else type_name.cppName
+
+        # Vector / Color / Point conversions
+        if any(x in tname for x in ["Vec3", "Color3", "Point3", "Normal3"]):
+            return [float(val[0]), float(val[1]), float(val[2])]
+        
+        if "Vec2" in tname:
+            return [float(val[0]), float(val[1])]
+
+        if any(x in tname for x in ["Vec4", "Color4", "Quat"]):
+            if hasattr(val, "GetReal"):
+                r = val.GetReal()
+                img = val.GetImaginary()
+                return [float(img[0]), float(img[1]), float(img[2]), float(r)]
+            return [float(val[0]), float(val[1]), float(val[2]), float(val[3])]
+
+        if "Matrix4" in tname:
+            flat = []
+            for r in range(4):
+                for c in range(4):
+                    flat.append(float(val[r][c]))
+            return flat
+
+        # Basic types
+        if type_name == Sdf.ValueTypeNames.Bool:
+            return bool(val)
+        elif type_name in (Sdf.ValueTypeNames.Int, Sdf.ValueTypeNames.Int64, Sdf.ValueTypeNames.UInt, Sdf.ValueTypeNames.UInt64):
+            return int(val)
+        elif type_name in (Sdf.ValueTypeNames.Float, Sdf.ValueTypeNames.Double, Sdf.ValueTypeNames.Half):
+            return float(val)
+        elif type_name in (Sdf.ValueTypeNames.Token, Sdf.ValueTypeNames.Asset):
+            return str(val)
+
+        return str(val)
+
+    def get_attribute(self, USD, prim_path, attribute_name, attribute_type):
+        from pxr import Usd, Sdf
+        import os
+        import uuid
+        import folder_paths
+
+        usd_path = USD.get("usd_info", "")
+        usda_text = USD.get("usda_text", "")
+
+        temp_dir = folder_paths.get_temp_directory()
+        os.makedirs(temp_dir, exist_ok=True)
+
+        temp_in = None
+        if not usd_path or not os.path.exists(usd_path):
+            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
+            with open(temp_in, "w") as f:
+                f.write(usda_text)
+            usd_path = temp_in
+
+        try:
+            if not prim_path.startswith("/"):
+                prim_path = "/" + prim_path
+
+            stage = Usd.Stage.Open(usd_path)
+            prim = stage.GetPrimAtPath(prim_path)
+            
+            if not prim.IsValid():
+                print(f"[GetUSDAttribute] Warning: Prim '{prim_path}' not found.")
+                return (None,)
+
+            attr = prim.GetAttribute(attribute_name)
+            if not attr.IsValid() or not attr.HasValue():
+                if not attribute_name.startswith("primvars:"):
+                    attr = prim.GetAttribute(f"primvars:{attribute_name}")
+            
+            if not attr.IsValid() or not attr.HasValue():
+                print(f"[GetUSDAttribute] Warning: Attribute '{attribute_name}' not found on '{prim_path}'.")
+                return (None,)
+
+            val = attr.Get()
+            if val is None:
+                return (None,)
+
+            # Resolve type schema name dynamically
+            alias_map = {
+                "Vec3f": "float3",
+                "Vec3d": "double3",
+            }
+            resolved_type_str = alias_map.get(attribute_type, attribute_type)
+            type_name = Sdf.GetValueTypeByName(resolved_type_str)
+            if not type_name:
+                type_name = Sdf.ValueTypeNames.String
+
+            # Convert to Python types
+            python_val = self.cast_usd_value_to_python(val, type_name)
+            return (python_val,)
+
+        finally:
+            if temp_in and os.path.exists(temp_in):
+                try:
+                    os.remove(temp_in)
+                except:
+                    pass

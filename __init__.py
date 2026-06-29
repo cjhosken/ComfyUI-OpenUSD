@@ -14,19 +14,31 @@ new_middlewares = [allow_wasm_headers] + list(existing)
 server.PromptServer.instance.app._middlewares = existing.__class__(new_middlewares)
 
 from .nodes.usd_io import LoadUSD, SaveUSD
-from .nodes.usd_view import PreviewUSD
-from .nodes.usd_utils import (SplitUSD, CombineUSD)
+from .nodes.usd_view import PreviewUSD, RenderUSD
+from .nodes.usd_utils import (SplitUSD, CombineUSD, LayerBreakUSD)
 from .nodes.usd_convert import (
     ConvertUSD, MeshToUSD, Model3DToUSD, USDtoModel3D,
 )
 
 
 from .nodes.utils.shader.usd_material import ApplyUSDMaterial
-from .nodes.utils.prim.usd_prim_get import GetUSDPrimInfo
-from .nodes.utils.prim.usd_prim_set import SetUSDPrimInfo
+from .nodes.utils.prim.usd_prim_get import GetUSDPrimInfo, GetUSDAttribute
+from .nodes.utils.prim.usd_prim_set import SetUSDPrimInfo, SetUSDAttribute
 
 from .nodes.utils.prim.usd_prim_color import SetUSDPrimDisplayColor
 from .nodes.utils.prim.usd_prim_configure import ConfigureUSDPrim
+from .nodes.utils.prim.usd_composition import (
+    AddUSDSublayer, AddUSDReferenceOrPayload,
+    AddUSDVariant, AddUSDInherit, AddUSDSpecializes
+)
+from .nodes.utils.prim.usd_scene import (
+    TransformUSDPrim, CreateUSDLight, CreateUSDCamera,
+    FlattenUSDStage, ConfigureUSDStage
+)
+from .nodes.utils.prim.usd_datatypes import (
+    USDDatatypeToJSON, JSONToUSDDatatype,
+    CreateUSDVec3, CreateUSDVec2, CreateUSDMatrix
+)
 
 NODE_CLASS_MAPPINGS = {
     "LoadUSD": LoadUSD,
@@ -44,7 +56,30 @@ NODE_CLASS_MAPPINGS = {
     "GetUSDPrimInfo": GetUSDPrimInfo,
 
     "ConfigureUSDPrim": ConfigureUSDPrim,
-    "SetUSDPrimDisplayColor": SetUSDPrimDisplayColor
+    "SetUSDPrimDisplayColor": SetUSDPrimDisplayColor,
+    
+    "LayerBreakUSD": LayerBreakUSD,
+    "SetUSDAttribute": SetUSDAttribute,
+    "GetUSDAttribute": GetUSDAttribute,
+    
+    "AddUSDSublayer": AddUSDSublayer,
+    "AddUSDReferenceOrPayload": AddUSDReferenceOrPayload,
+    "AddUSDVariant": AddUSDVariant,
+    "AddUSDInherit": AddUSDInherit,
+    "AddUSDSpecializes": AddUSDSpecializes,
+    
+    "TransformUSDPrim": TransformUSDPrim,
+    "CreateUSDLight": CreateUSDLight,
+    "CreateUSDCamera": CreateUSDCamera,
+    "FlattenUSDStage": FlattenUSDStage,
+    "ConfigureUSDStage": ConfigureUSDStage,
+    "RenderUSD": RenderUSD,
+    
+    "USDDatatypeToJSON": USDDatatypeToJSON,
+    "JSONToUSDDatatype": JSONToUSDDatatype,
+    "CreateUSDVec3": CreateUSDVec3,
+    "CreateUSDVec2": CreateUSDVec2,
+    "CreateUSDMatrix": CreateUSDMatrix
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -63,7 +98,30 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "GetUSDPrimInfo": "Get USD Prim Info",
 
     "ConfigureUSDPrim": "Configure USD Prim",
-    "SetUSDPrimDisplayColor": "Set USD Prim Display Color"
+    "SetUSDPrimDisplayColor": "Set USD Prim Display Color",
+    
+    "LayerBreakUSD": "Layer Break USD",
+    "SetUSDAttribute": "Set USD Attribute",
+    "GetUSDAttribute": "Get USD Attribute",
+    
+    "AddUSDSublayer": "Add USD Sublayer",
+    "AddUSDReferenceOrPayload": "Add USD Reference / Payload",
+    "AddUSDVariant": "Add USD Variant",
+    "AddUSDInherit": "Add USD Inherit",
+    "AddUSDSpecializes": "Add USD Specializes",
+    
+    "TransformUSDPrim": "Transform USD Prim",
+    "CreateUSDLight": "Create USD Light",
+    "CreateUSDCamera": "Create USD Camera",
+    "FlattenUSDStage": "Flatten USD Stage",
+    "ConfigureUSDStage": "Configure USD Stage",
+    "RenderUSD": "Render USD",
+    
+    "USDDatatypeToJSON": "USD Datatype to JSON",
+    "JSONToUSDDatatype": "JSON to USD Datatype",
+    "CreateUSDVec3": "Create USD Vec3",
+    "CreateUSDVec2": "Create USD Vec2",
+    "CreateUSDMatrix": "Create USD Matrix"
 }
 
 WEB_DIRECTORY = "web"
