@@ -70,6 +70,7 @@ export class USDTreeView {
     async load(usdaText, filePath) {
         this.selectedPath = null;
         this.expandedPaths.clear();
+        this._removeContextMenu();
         this.attrPanel.style.display = 'none';
         this.attrPanel.innerHTML = '';
         this._showEmpty('Loading stage\u2026');
@@ -77,7 +78,8 @@ export class USDTreeView {
         try {
             let res;
             if (usdaText) {
-                res = await fetch('/usd/prims', {
+                const url = filePath ? `/usd/prims?filename=${encodeURIComponent(filePath)}` : '/usd/prims';
+                res = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain' },
                     body: usdaText,
@@ -200,6 +202,11 @@ export class USDTreeView {
         row.appendChild(typeBadge);
 
         row.addEventListener('click', () => this._select(node));
+        row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this._showContextMenu(e.clientX, e.clientY, node.path);
+        });
         parent.appendChild(row);
 
         /* Children */
@@ -294,6 +301,76 @@ export class USDTreeView {
         row.appendChild(t);
         row.appendChild(v);
         parent.appendChild(row);
+    }
+
+    _showContextMenu(x, y, primPath) {
+        this._removeContextMenu();
+
+        const menu = document.createElement('div');
+        menu.className = 'usd-context-menu';
+        menu.style.cssText = `
+            position: fixed;
+            left: ${x}px;
+            top: ${y}px;
+            background: #25252d;
+            border: 1px solid #3c3c4a;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            border-radius: 4px;
+            padding: 4px 0;
+            z-index: 10000;
+            min-width: 140px;
+            font-family: sans-serif;
+            font-size: 12px;
+        `;
+
+        const item = document.createElement('div');
+        item.style.cssText = `
+            padding: 6px 12px;
+            color: #d1d1db;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s;
+        `;
+        item.textContent = "Copy Prim Path";
+        item.addEventListener('mouseenter', () => {
+            item.style.background = '#3e3e4f';
+        });
+        item.addEventListener('mouseleave', () => {
+            item.style.background = 'transparent';
+        });
+        item.addEventListener('click', () => {
+            navigator.clipboard.writeText(primPath).then(() => {
+                item.textContent = "Copied!";
+                item.style.color = "#4caf50";
+                setTimeout(() => {
+                    this._removeContextMenu();
+                }, 400);
+            }).catch(err => {
+                console.error("Failed to copy prim path:", err);
+                this._removeContextMenu();
+            });
+        });
+
+        menu.appendChild(item);
+        document.body.appendChild(menu);
+
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                this._removeContextMenu();
+            }
+        };
+        document.addEventListener('mousedown', closeMenu);
+        menu._closeHandler = closeMenu;
+    }
+
+    _removeContextMenu() {
+        const existing = document.querySelector('.usd-context-menu');
+        if (existing) {
+            if (existing._closeHandler) {
+                document.removeEventListener('mousedown', existing._closeHandler);
+            }
+            existing.remove();
+        }
     }
 }
 

@@ -158,9 +158,44 @@ def resolve_case_insensitive(path):
 @server.PromptServer.instance.routes.get("/usd/view")
 async def serve_usd_file(request):
     filename = request.query.get("filename")
+    usd_hash = request.query.get("h")
     if not filename:
         return web.Response(status=400, text="Missing filename")
     
+    # Check if there is an in-memory stage update registered for this hash
+    if usd_hash:
+        try:
+            from nodes.usd_view import IN_MEMORY_STAGES
+            if usd_hash in IN_MEMORY_STAGES:
+                from pxr import Usd
+                usda_text = IN_MEMORY_STAGES[usd_hash]
+                
+                # To resolve relative sublayers and references, write usda_text to a temp file
+                # next to the original filename directory
+                import uuid
+                usd_dir = os.path.dirname(os.path.abspath(filename))
+                temp_path = os.path.join(usd_dir, f"temp_flatten_{uuid.uuid4().hex}.usda")
+                try:
+                    with open(temp_path, "w", encoding="utf-8") as f:
+                        f.write(usda_text)
+                    
+                    stage = Usd.Stage.Open(temp_path)
+                    stage.Load()
+                    flat_layer = stage.Flatten()
+                    flat_usda = flat_layer.ExportToString()
+                finally:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                
+                response = web.Response(text=flat_usda, content_type="text/plain")
+                response.headers["Access-Control-Allow-Origin"] = "*"
+                response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+                response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+                response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+                return response
+        except Exception as e:
+            print(f"[serve_usd_file] Failed to serve in-memory stage: {e}")
+
     # Normalize absolute path
     filename = os.path.abspath(filename)
     
@@ -312,8 +347,14 @@ async def serve_usd_prims_post(request):
         if not usda_text.strip():
             return web.Response(status=400, text="Empty USDA body")
 
-        # Write to a temp file so OpenUSD can open it
-        tmp_path = os.path.join(tempfile.gettempdir(), f"comfyusd_tree_{uuid.uuid4().hex}.usda")
+        # Write to a temp file next to the original USD file to resolve relative sublayers and references
+        filename = request.query.get("filename")
+        if filename:
+            usd_dir = os.path.dirname(os.path.abspath(filename))
+            tmp_path = os.path.join(usd_dir, f"comfyusd_tree_{uuid.uuid4().hex}.usda")
+        else:
+            tmp_path = os.path.join(tempfile.gettempdir(), f"comfyusd_tree_{uuid.uuid4().hex}.usda")
+
         try:
             with open(tmp_path, "w", encoding="utf-8") as f:
                 f.write(usda_text)

@@ -32,11 +32,24 @@ app.registerExtension({
             if (!this.widgets) this.widgets = [];
 
             // Attach widgets based on input type
+            const getDefVal = (name) => {
+                const req = nodeData.input?.required?.[name];
+                if (req && req[1] && req[1].default !== undefined) {
+                    return req[1].default;
+                }
+                const opt = nodeData.input?.optional?.[name];
+                if (opt && opt[1] && opt[1].default !== undefined) {
+                    return opt[1].default;
+                }
+                return undefined;
+            };
+
             for (const input of this.inputs || []) {
                 if (input.type === "VEC2" || input.type === "VEC3" || input.type === "COLOR") {
-                    const w = input.type === "VEC2" ? createVec2Widget(this, input.name) :
-                              input.type === "VEC3" ? createVec3Widget(this, input.name) :
-                                                      createColorWidget(this, input.name);
+                    const defVal = getDefVal(input.name);
+                    const w = input.type === "VEC2" ? createVec2Widget(this, input.name, defVal) :
+                              input.type === "VEC3" ? createVec3Widget(this, input.name, defVal) :
+                                                      createColorWidget(this, input.name, defVal);
 
                     // Create and prepend a label
                     const label = document.createElement("span");

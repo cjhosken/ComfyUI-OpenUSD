@@ -20,6 +20,7 @@ export class USDViewport {
         this.fps = 24;
         this.mixer = null;
         this.clock = new THREE.Clock();
+        this.isRenderingOffscreen = false;
 
         // Controls state
         this.isDragging = false;
@@ -572,9 +573,16 @@ export class USDViewport {
         this.camera.updateProjectionMatrix();
     }
 
-    async loadUSD(filePath, usdaText = null) {
+    async loadUSD(filePath, usdaText = null, frame = null, usdHash = null) {
         this.currentModelPath = filePath || null;
         this.currentUsdaText = usdaText || null;
+
+        const hasPreviousModel = this.currentModel !== null;
+        const savedCamPos = this.camera.position.clone();
+        const savedCamQuat = this.camera.quaternion.clone();
+        const savedCamFov = this.camera.fov;
+        const savedCamNear = this.camera.near;
+        const savedCamFar = this.camera.far;
 
         if (this.currentModel) {
             this.scene.remove(this.currentModel);
@@ -585,14 +593,24 @@ export class USDViewport {
             let model;
 
             const isBinaryOrUsdz = filePath && (filePath.toLowerCase().endsWith('.usdz') || filePath.toLowerCase().endsWith('.usd'));
-            if (usdaText && !isBinaryOrUsdz) {
+            if (filePath && usdHash) {
+                const url = `/usd/view?filename=${encodeURIComponent(filePath)}&h=${encodeURIComponent(usdHash)}`;
+                const parsedFileName = (filePath.split('/').pop() || 'scene') + '.usda';
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+                const arrayBuffer = await res.arrayBuffer();
+                const parseOptions = {
+                    sourcePath: `/usd/view?filename=${encodeURIComponent(filePath)}`,
+                    fileName: parsedFileName
+                };
+                model = await this.loader.parseAsync(arrayBuffer, parseOptions);
+            } else if (usdaText && !isBinaryOrUsdz) {
                 const arrayBuffer = new TextEncoder().encode(usdaText).buffer;
                 const parseOptions = {
                     sourcePath: `/usd/view?filename=${encodeURIComponent(filePath || 'scene.usda')}`
                 };
                 model = await this.loader.parseAsync(arrayBuffer, parseOptions);
-            }
-            else if (filePath) {
+            } else if (filePath) {
                 const url = `/usd/view?filename=${encodeURIComponent(filePath)}`;
                 model = await this.loader.loadAsync(url);
             } else {
@@ -630,8 +648,17 @@ export class USDViewport {
                 this.applyShading(this.shadingSelect.value);
             }
 
-            // Fit camera
-            this.fitCameraToModel();
+            // Fit camera or restore saved camera
+            if (!hasPreviousModel) {
+                this.fitCameraToModel();
+            } else {
+                this.camera.position.copy(savedCamPos);
+                this.camera.quaternion.copy(savedCamQuat);
+                this.camera.fov = savedCamFov;
+                this.camera.near = savedCamNear;
+                this.camera.far = savedCamFar;
+                this.camera.updateProjectionMatrix();
+            }
 
             // Setup animation
             if (model.scene.animations && model.scene.animations.length > 0) {
@@ -639,7 +666,11 @@ export class USDViewport {
                 model.scene.animations.forEach((clip) => {
                     this.mixer.clipAction(clip).play();
                 });
-                this.mixer.setTime(this.startFrame / this.fps);
+                const targetFrame = frame !== null ? frame : this.startFrame;
+                this.currentFrame = targetFrame;
+                this.mixer.setTime(targetFrame / this.fps);
+                if (this.slider) this.slider.value = targetFrame;
+                if (this.frameLabel) this.frameLabel.textContent = `Frame: ${Math.round(targetFrame)}`;
             } else {
                 this.mixer = null;
             }
@@ -650,6 +681,21 @@ export class USDViewport {
             this.showError("Failed to load USD file");
             throw error;
         }
+    }
+
+    setFrame(frame) {
+        const targetFrame = frame !== null ? frame : this.startFrame;
+        this.currentFrame = targetFrame;
+        if (this.mixer) {
+            this.mixer.setTime(targetFrame / this.fps);
+        }
+        if (this.slider) {
+            this.slider.value = targetFrame;
+        }
+        if (this.frameLabel) {
+            this.frameLabel.textContent = `Frame: ${Math.round(targetFrame)}`;
+        }
+        this.renderer.render(this.scene, this.camera);
     }
 
     setupTimeline() {
@@ -713,7 +759,9 @@ export class USDViewport {
                 }
             }
 
-            this.renderer.render(this.scene, this.camera);
+            if (!this.isRenderingOffscreen) {
+                this.renderer.render(this.scene, this.camera);
+            }
         };
         animate();
     }

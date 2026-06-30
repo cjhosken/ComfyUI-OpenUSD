@@ -57,15 +57,21 @@ class ConvertUSD:
         out_obj_path = os.path.join(target_dir, f"{output_name}.obj")
 
         temp_usd_path = None
-        if source_type == "USD" and (not source_path or not os.path.exists(source_path)):
+        if source_type == "USD":
             import uuid
-            temp_dir = folder_paths.get_temp_directory()
-            os.makedirs(temp_dir, exist_ok=True)
             usda_text = usd_input.get("usda_text", "")
-            temp_usd_path = os.path.join(temp_dir, f"usd_{uuid.uuid4().hex}.usda")
-            with open(temp_usd_path, "w") as f:
-                f.write(usda_text)
-            source_path = temp_usd_path
+            usd_path = usd_input.get("usd_info", "")
+            if usda_text:
+                if usd_path and os.path.exists(usd_path):
+                    base_dir = os.path.dirname(os.path.abspath(usd_path))
+                    temp_usd_path = os.path.join(base_dir, f".temp_eval_{uuid.uuid4().hex}.usda")
+                else:
+                    temp_dir = folder_paths.get_temp_directory()
+                    os.makedirs(temp_dir, exist_ok=True)
+                    temp_usd_path = os.path.join(temp_dir, f"usd_{uuid.uuid4().hex}.usda")
+                with open(temp_usd_path, "w", encoding="utf-8") as f:
+                    f.write(usda_text)
+                source_path = temp_usd_path
 
         try:
             usd_output = {"usd_info": "", "usda_text": ""}
@@ -125,12 +131,20 @@ class ConvertUSD:
                 if source_type == "USD":
                     stage = Usd.Stage.Open(source_path)
                     meshes = []
+                    xform_cache = UsdGeom.XformCache()
                     for prim in stage.Traverse():
                         if prim.IsA(UsdGeom.Mesh):
                             mesh_geom = UsdGeom.Mesh(prim)
                             points = mesh_geom.GetPointsAttr().Get()
                             if not points: continue
-                            vertices = np.array([[p[0], p[1], p[2]] for p in points], dtype=np.float32)
+                            
+                            # Compute local-to-world transform for the mesh prim
+                            world_transform = xform_cache.GetLocalToWorldTransform(prim)
+                            vertices = []
+                            for p in points:
+                                p_transformed = world_transform.Transform(Gf.Vec3d(p[0], p[1], p[2]))
+                                vertices.append([p_transformed[0], p_transformed[1], p_transformed[2]])
+                            vertices = np.array(vertices, dtype=np.float32)
                             face_counts = mesh_geom.GetFaceVertexCountsAttr().Get()
                             face_indices = mesh_geom.GetFaceVertexIndicesAttr().Get()
                             if not face_counts or not face_indices: continue
@@ -166,12 +180,20 @@ class ConvertUSD:
                 if source_type == "USD":
                     stage = Usd.Stage.Open(source_path)
                     meshes = []
+                    xform_cache = UsdGeom.XformCache()
                     for prim in stage.Traverse():
                         if prim.IsA(UsdGeom.Mesh):
                             mesh_geom = UsdGeom.Mesh(prim)
                             points = mesh_geom.GetPointsAttr().Get()
                             if not points: continue
-                            vertices = np.array([[p[0], p[1], p[2]] for p in points], dtype=np.float32)
+                            
+                            # Compute local-to-world transform for the mesh prim
+                            world_transform = xform_cache.GetLocalToWorldTransform(prim)
+                            vertices = []
+                            for p in points:
+                                p_transformed = world_transform.Transform(Gf.Vec3d(p[0], p[1], p[2]))
+                                vertices.append([p_transformed[0], p_transformed[1], p_transformed[2]])
+                            vertices = np.array(vertices, dtype=np.float32)
                             face_counts = mesh_geom.GetFaceVertexCountsAttr().Get()
                             face_indices = mesh_geom.GetFaceVertexIndicesAttr().Get()
                             if not face_counts or not face_indices: continue
@@ -383,7 +405,7 @@ class USDtoModel3D:
 
     def usd_to_model3d(self, USD):
         import trimesh
-        from pxr import Usd, UsdGeom
+        from pxr import Usd, UsdGeom, Gf
         import numpy as np
         import uuid
 
@@ -392,23 +414,35 @@ class USDtoModel3D:
 
         source_path = usd_path
         temp_usd_path = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_dir = folder_paths.get_temp_directory()
-            os.makedirs(temp_dir, exist_ok=True)
-            temp_usd_path = os.path.join(temp_dir, f"usd_{uuid.uuid4().hex}.usda")
-            with open(temp_usd_path, "w") as f:
+        if usda_text:
+            if usd_path and os.path.exists(usd_path):
+                base_dir = os.path.dirname(os.path.abspath(usd_path))
+                temp_usd_path = os.path.join(base_dir, f".temp_eval_{uuid.uuid4().hex}.usda")
+            else:
+                temp_dir = folder_paths.get_temp_directory()
+                os.makedirs(temp_dir, exist_ok=True)
+                temp_usd_path = os.path.join(temp_dir, f"usd_{uuid.uuid4().hex}.usda")
+            with open(temp_usd_path, "w", encoding="utf-8") as f:
                 f.write(usda_text)
             source_path = temp_usd_path
 
         try:
             stage = Usd.Stage.Open(source_path)
             meshes = []
+            xform_cache = UsdGeom.XformCache()
             for prim in stage.Traverse():
                 if prim.IsA(UsdGeom.Mesh):
                     mesh_geom = UsdGeom.Mesh(prim)
                     points = mesh_geom.GetPointsAttr().Get()
                     if not points: continue
-                    vertices = np.array([[p[0], p[1], p[2]] for p in points], dtype=np.float32)
+                    
+                    # Compute local-to-world transform for the mesh prim
+                    world_transform = xform_cache.GetLocalToWorldTransform(prim)
+                    vertices = []
+                    for p in points:
+                        p_transformed = world_transform.Transform(Gf.Vec3d(p[0], p[1], p[2]))
+                        vertices.append([p_transformed[0], p_transformed[1], p_transformed[2]])
+                    vertices = np.array(vertices, dtype=np.float32)
                     face_counts = mesh_geom.GetFaceVertexCountsAttr().Get()
                     face_indices = mesh_geom.GetFaceVertexIndicesAttr().Get()
                     if not face_counts or not face_indices: continue

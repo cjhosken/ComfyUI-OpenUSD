@@ -3,6 +3,230 @@ import { USDViewport } from "./widgets/viewport.js";
 import { USDTreeView } from "./widgets/tree.js";
 import * as THREE from "https://esm.sh/three";
 
+async function captureAndUploadRange(node, startFrame, endFrame) {
+    const viewport = node.viewport;
+    if (!viewport || !viewport.renderer || !viewport.scene || !viewport.camera) return;
+    if (!viewport.currentModel) {
+        console.warn("[RenderUSD] No model loaded yet, skipping range capture.");
+        return;
+    }
+
+    // Freeze screen renders while rendering frame range in background
+    viewport.isRenderingOffscreen = true;
+
+    const renderer = viewport.renderer;
+    const scene    = viewport.scene;
+    const camera   = viewport.camera;
+
+    const wWidth  = node.widgets?.find(w => w.name === "width");
+    const wHeight = node.widgets?.find(w => w.name === "height");
+    const W = wWidth  ? parseInt(wWidth.value)  || 512 : (viewport.container.clientWidth  || renderer.domElement.clientWidth  || 512);
+    const H = wHeight ? parseInt(wHeight.value) || 512 : (viewport.container.clientHeight || renderer.domElement.clientHeight || 512);
+
+    const meshMaterials = [];
+    scene.traverse(child => {
+        if (child.isMesh) {
+            meshMaterials.push({ mesh: child, mat: child.material });
+        }
+    });
+
+    const getCaptureMaterial = (mesh) => {
+        const orig = mesh.userData.originalMaterial;
+        if (orig) return orig;
+        return new THREE.MeshStandardMaterial({ color: 0x888888 });
+    };
+
+    // Helper to upload a data URL to ComfyUI
+    const uploadImage = async (dataUrl, suffix) => {
+        const res  = await fetch(dataUrl);
+        const blob = await res.blob();
+        const filename = `render_usd_${node.id}_${suffix}.png`;
+        const formData = new FormData();
+        formData.append("image", blob, filename);
+        formData.append("overwrite", "true");
+        const uploadRes  = await fetch("/upload/image", { method: "POST", body: formData });
+        const uploadJson = await uploadRes.json();
+        return uploadJson.name
+            ? (uploadJson.subfolder ? `${uploadJson.subfolder}/${uploadJson.name}` : uploadJson.name)
+            : filename;
+    };
+
+    const originalFrame = viewport.currentFrame;
+    if (node.progressOverlay) {
+        node.progressOverlay.style.display = "flex";
+        node.progressText.textContent = `Preparing sequence...`;
+        node.progressBarFill.style.width = "0%";
+    }
+    try {
+        const beautyFiles = [];
+        const depthFiles = [];
+        const normalFiles = [];
+
+        const totalFrames = endFrame - startFrame + 1;
+        for (let f = startFrame; f <= endFrame; f++) {
+            const currentIdx = f - startFrame;
+            const pct = Math.round((currentIdx / totalFrames) * 100);
+            if (node.progressOverlay) {
+                node.progressText.textContent = `Rendering Frame ${f} (${currentIdx + 1} of ${totalFrames})...`;
+                node.progressBarFill.style.width = `${pct}%`;
+            }
+
+            if (viewport.mixer) {
+                viewport.mixer.setTime(f / viewport.fps);
+            }
+            // Small pause for state update
+            await new Promise(r => setTimeout(r, 40));
+
+            // 1. Beauty Pass
+            meshMaterials.forEach(({ mesh }) => {
+                mesh.visible = true;
+                mesh.material = getCaptureMaterial(mesh);
+                if (mesh.material) mesh.material.visible = true;
+            });
+            scene.traverse(child => {
+                if (child.userData?.isWireframeHelper) child.visible = false;
+            });
+            const originalAspect = camera.aspect;
+            camera.aspect = W / H;
+            camera.updateProjectionMatrix();
+
+            const beautyTarget = new THREE.WebGLRenderTarget(W, H);
+            renderer.setRenderTarget(beautyTarget);
+            renderer.render(scene, camera);
+            const beautyPixels = new Uint8Array(W * H * 4);
+            renderer.readRenderTargetPixels(beautyTarget, 0, 0, W, H, beautyPixels);
+            renderer.setRenderTarget(null);
+            beautyTarget.dispose();
+
+            // Flip Y for texture mapping
+            const beautyCanvas = document.createElement('canvas');
+            beautyCanvas.width = W;
+            beautyCanvas.height = H;
+            const beautyCtx = beautyCanvas.getContext('2d');
+            const beautyImgData = beautyCtx.createImageData(W, H);
+            for (let y = 0; y < H; y++) {
+                const srcOffset = (H - 1 - y) * W * 4;
+                const destOffset = y * W * 4;
+                beautyImgData.data.set(beautyPixels.subarray(srcOffset, srcOffset + W * 4), destOffset);
+            }
+            beautyCtx.putImageData(beautyImgData, 0, 0);
+            const beautyUrl = beautyCanvas.toDataURL ? beautyCanvas.toDataURL('image/png') : beautyCanvas.toDataUrl('image/png');
+
+            // 2. Normal Pass
+            const normalMaterial = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+            meshMaterials.forEach(({ mesh }) => {
+                mesh.visible = true;
+                mesh.material = normalMaterial;
+                if (mesh.material) mesh.material.visible = true;
+            });
+            const normalTarget = new THREE.WebGLRenderTarget(W, H);
+            renderer.setRenderTarget(normalTarget);
+            renderer.render(scene, camera);
+            const normalPixels = new Uint8Array(W * H * 4);
+            renderer.readRenderTargetPixels(normalTarget, 0, 0, W, H, normalPixels);
+            renderer.setRenderTarget(null);
+            normalTarget.dispose();
+
+            const normalCanvas = document.createElement('canvas');
+            normalCanvas.width = W;
+            normalCanvas.height = H;
+            const normalCtx = normalCanvas.getContext('2d');
+            const normalImgData = normalCtx.createImageData(W, H);
+            for (let y = 0; y < H; y++) {
+                const srcOffset = (H - 1 - y) * W * 4;
+                const destOffset = y * W * 4;
+                normalImgData.data.set(normalPixels.subarray(srcOffset, srcOffset + W * 4), destOffset);
+            }
+            normalCtx.putImageData(normalImgData, 0, 0);
+            const normalUrl = normalCanvas.toDataURL ? normalCanvas.toDataURL('image/png') : normalCanvas.toDataUrl('image/png');
+
+            // 3. Depth Pass
+            const originalNear = camera.near;
+            const originalFar = camera.far;
+            if (viewport.currentModel) {
+                const box = new THREE.Box3().setFromObject(viewport.currentModel);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const camDist = camera.position.distanceTo(center);
+                const radius = size.length() / 2;
+                camera.near = Math.max(0.01, camDist - radius);
+                camera.far = camDist + radius;
+                camera.updateProjectionMatrix();
+            }
+
+            const depthMaterial = new THREE.MeshDepthMaterial();
+            meshMaterials.forEach(({ mesh }) => {
+                mesh.visible = true;
+                mesh.material = depthMaterial;
+                if (mesh.material) mesh.material.visible = true;
+            });
+            const depthTarget = new THREE.WebGLRenderTarget(W, H);
+            renderer.setRenderTarget(depthTarget);
+            renderer.render(scene, camera);
+            const depthPixels = new Uint8Array(W * H * 4);
+            renderer.readRenderTargetPixels(depthTarget, 0, 0, W, H, depthPixels);
+            renderer.setRenderTarget(null);
+            depthTarget.dispose();
+
+            camera.near = originalNear;
+            camera.far = originalFar;
+            camera.updateProjectionMatrix();
+
+            const depthCanvas = document.createElement('canvas');
+            depthCanvas.width = W;
+            depthCanvas.height = H;
+            const depthCtx = depthCanvas.getContext('2d');
+            const depthImgData = depthCtx.createImageData(W, H);
+            for (let y = 0; y < H; y++) {
+                const srcOffset = (H - 1 - y) * W * 4;
+                const destOffset = y * W * 4;
+                depthImgData.data.set(depthPixels.subarray(srcOffset, srcOffset + W * 4), destOffset);
+            }
+            depthCtx.putImageData(depthImgData, 0, 0);
+            const depthUrl = depthCanvas.toDataURL ? depthCanvas.toDataURL('image/png') : depthCanvas.toDataUrl('image/png');
+
+            camera.aspect = originalAspect;
+            camera.updateProjectionMatrix();
+
+            const beautyFile = await uploadImage(beautyUrl, `beauty_${f}`);
+            const depthFile  = await uploadImage(depthUrl,  `depth_${f}`);
+            const normalFile = await uploadImage(normalUrl, `normal_${f}`);
+
+            beautyFiles.push(beautyFile);
+            depthFiles.push(depthFile);
+            normalFiles.push(normalFile);
+        }
+
+        const wBeauty = node.widgets?.find(w => w.name === "beauty_file");
+        if (wBeauty) wBeauty.value = beautyFiles.join(",");
+        const wDepth  = node.widgets?.find(w => w.name === "depth_file");
+        if (wDepth)  wDepth.value  = depthFiles.join(",");
+        const wNormal = node.widgets?.find(w => w.name === "normal_file");
+        if (wNormal) wNormal.value = normalFiles.join(",");
+
+        if (viewport.mixer) {
+            viewport.mixer.setTime(originalFrame / viewport.fps);
+        }
+        viewport.isRenderingOffscreen = false;
+        renderer.render(scene, camera);
+
+        console.log("[RenderUSD] Captured range:", { beautyFiles, depthFiles, normalFiles });
+        node.setDirtyCanvas(true, true);
+    } catch (err) {
+        console.error("[RenderUSD] Range render capture failed:", err);
+    } finally {
+        if (viewport.mixer) {
+            viewport.mixer.setTime(originalFrame / viewport.fps);
+        }
+        meshMaterials.forEach(({ mesh, mat }) => { mesh.material = mat; });
+        viewport.isRenderingOffscreen = false;
+        renderer.render(scene, camera);
+        if (node.progressOverlay) {
+            node.progressOverlay.style.display = "none";
+        }
+    }
+}
+
 /* ---- Capture and upload beauty/depth/normal passes ---------------- */
 async function captureAndUploadRender(node) {
     const viewport = node.viewport;
@@ -16,9 +240,11 @@ async function captureAndUploadRender(node) {
     const scene    = viewport.scene;
     const camera   = viewport.camera;
 
-    // Use logical (CSS) dimensions to avoid devicePixelRatio mismatch
-    const W = viewport.container.clientWidth  || renderer.domElement.clientWidth  || 512;
-    const H = viewport.container.clientHeight || renderer.domElement.clientHeight || 512;
+    // Read exact target dimensions from node widgets if present (RenderUSD), falling back to container size (PreviewUSD)
+    const wWidth  = node.widgets?.find(w => w.name === "width");
+    const wHeight = node.widgets?.find(w => w.name === "height");
+    const W = wWidth  ? parseInt(wWidth.value)  || 512 : (viewport.container.clientWidth  || renderer.domElement.clientWidth  || 512);
+    const H = wHeight ? parseInt(wHeight.value) || 512 : (viewport.container.clientHeight || renderer.domElement.clientHeight || 512);
 
     // Collect every mesh and its current material so we can restore them after capture
     const meshMaterials = [];
@@ -49,6 +275,22 @@ async function captureAndUploadRender(node) {
             if (child.userData?.isWireframeHelper) child.visible = false;
         });
 
+        // Temporary aspect ratio and tight clipping planes update for camera to auto-normalize depth
+        const originalAspect = camera.aspect;
+        const originalNear = camera.near;
+        const originalFar = camera.far;
+        camera.aspect = W / H;
+        if (materialOverride instanceof THREE.MeshDepthMaterial && viewport.currentModel) {
+            const box = new THREE.Box3().setFromObject(viewport.currentModel);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const camDist = camera.position.distanceTo(center);
+            const radius = size.length() / 2;
+            camera.near = Math.max(0.01, camDist - radius);
+            camera.far = camDist + radius;
+        }
+        camera.updateProjectionMatrix();
+
         const target = new THREE.WebGLRenderTarget(W, H, {
             minFilter: THREE.LinearFilter,
             magFilter: THREE.LinearFilter,
@@ -58,18 +300,18 @@ async function captureAndUploadRender(node) {
 
         scene.overrideMaterial = null; // let per-mesh materials drive the pass
         renderer.setRenderTarget(target);
-        renderer.setSize(W, H);
         renderer.render(scene, camera);
-        renderer.setRenderTarget(null);
-        // Restore renderer to container size
-        renderer.setSize(
-            viewport.container.clientWidth  || W,
-            viewport.container.clientHeight || H
-        );
 
         const buf = new Uint8Array(W * H * 4);
         renderer.readRenderTargetPixels(target, 0, 0, W, H, buf);
+        renderer.setRenderTarget(null);
         target.dispose();
+
+        // Restore original camera aspect ratio and clipping planes
+        camera.aspect = originalAspect;
+        camera.near = originalNear;
+        camera.far = originalFar;
+        camera.updateProjectionMatrix();
 
         // WebGL is bottom-to-top; flip vertically
         const flipped = new Uint8Array(W * H * 4);
@@ -109,7 +351,7 @@ async function captureAndUploadRender(node) {
         // Normal: Three.js MeshNormalMaterial override
         const normalUrl = renderToDataUrl(new THREE.MeshNormalMaterial({ side: THREE.DoubleSide }));
         // Depth: Three.js MeshDepthMaterial override
-        const depthUrl  = renderToDataUrl(new THREE.MeshDepthMaterial({ near: camera.near, far: camera.far }));
+        const depthUrl  = renderToDataUrl(new THREE.MeshDepthMaterial());
 
         // Restore each mesh to whatever material applyShading had set
         meshMaterials.forEach(({ mesh, mat }) => {
@@ -178,8 +420,10 @@ window.fetch = async function(resource, init) {
         try {
             const url = new URL(urlString, window.location.origin);
             if (url.origin === window.location.origin &&
+                (!init || !init.method || init.method.toUpperCase() === 'GET') &&
                 !url.pathname.startsWith('/api/') &&
                 !url.pathname.startsWith('/extensions/') &&
+                !url.pathname.startsWith('/upload/') &&
                 !url.pathname.startsWith('/usd/view') &&
                 !url.pathname.startsWith('/usd/prims') &&
                 url.pathname !== '/' &&
@@ -332,6 +576,8 @@ app.registerExtension({
 
                 const filePath = message?.usd_info?.[0];
                 const usdaText = message?.usda_text?.[0];
+                const usdHash = message?.usd_hash?.[0];
+                const frame = message?.frame?.[0] !== undefined ? message.frame[0] : 0;
 
                 /* Update fetch interceptor base dir */
                 const baseFile = filePath;
@@ -341,16 +587,22 @@ app.registerExtension({
 
                 if (!filePath && !usdaText) return;
 
-                try {
-                    /* Load 3-D viewport */
-                    await this.viewport.loadUSD(filePath, usdaText);
+                const isSameModel = (filePath && this.viewport.currentModelPath === filePath && this.viewport.currentUsdHash === usdHash) ||
+                                    (!filePath && usdaText && this.viewport.currentUsdaText === usdaText && this.viewport.currentUsdHash === usdHash);
 
-                    /* Load prim tree - prefers usda_text, falls back to filePath unless it is binary/usdz */
-                    const isBinaryOrUsdz = filePath && (filePath.toLowerCase().endsWith('.usdz') || filePath.toLowerCase().endsWith('.usd'));
-                    if (isBinaryOrUsdz) {
-                        await this.treeView.load(null, filePath);
+                try {
+                    if (isSameModel) {
+                        this.viewport.setFrame(frame);
                     } else {
-                        await this.treeView.load(usdaText || null, filePath || null);
+                        /* Load 3-D viewport */
+                        await this.viewport.loadUSD(filePath, usdaText, frame, usdHash);
+                    }
+
+                    /* Load prim tree - prefers usdaText if available, falls back to filePath */
+                    if (usdaText) {
+                        await this.treeView.load(usdaText, filePath || null);
+                    } else if (filePath) {
+                        await this.treeView.load(null, filePath);
                     }
                 } catch (error) {
                     console.error("[USD] Failed to load:", error);
@@ -511,29 +763,53 @@ app.registerExtension({
 
                 /* ---- 3-D viewport ---------------------------------- */
                 const viewportContainer = document.createElement("div");
-                viewportContainer.style.cssText = `
-                    flex: 1;
-                    position: relative;
-                    min-height: 200px;
+                viewportContainer.style.cssText = "flex-grow: 1; position: relative;";
+
+                const progressOverlay = document.createElement("div");
+                progressOverlay.className = "usd-progress-overlay";
+                progressOverlay.style.cssText = `
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(13, 13, 16, 0.95);
+                    backdrop-filter: blur(8px);
+                    display: none;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 100;
+                    color: #d1d1db;
+                    font-family: sans-serif;
                 `;
-
-                /* ---- Render control bar ---------------------------- */
-                const controlBar = document.createElement("div");
-                controlBar.className = "usd-tree-toolbar";
                 
-                const barTitle = document.createElement("span");
-                barTitle.className = "usd-tree-toolbar-title";
-                barTitle.textContent = "Render Pass Viewport";
-
-                const captureBtn = document.createElement("button");
-                captureBtn.className = "comfy-usd-btn";
-                captureBtn.textContent = "Capture Render";
+                const progressTitle = document.createElement("div");
+                progressTitle.style.cssText = "font-size: 14px; font-weight: 600; margin-bottom: 12px; letter-spacing: 0.5px;";
+                progressTitle.textContent = "Rendering Sequence...";
                 
-                controlBar.appendChild(barTitle);
-                controlBar.appendChild(captureBtn);
+                const progressBarBg = document.createElement("div");
+                progressBarBg.style.cssText = "width: 70%; height: 6px; background: #22222a; border-radius: 3px; overflow: hidden; margin-bottom: 8px;";
+                
+                const progressBarFill = document.createElement("div");
+                progressBarFill.style.cssText = "width: 0%; height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); transition: width 0.1s ease-out; border-radius: 3px;";
+                
+                const progressText = document.createElement("div");
+                progressText.style.cssText = "font-size: 11px; color: #88889c;";
+                progressText.textContent = "Initializing...";
+                
+                progressBarBg.appendChild(progressBarFill);
+                progressOverlay.appendChild(progressTitle);
+                progressOverlay.appendChild(progressBarBg);
+                progressOverlay.appendChild(progressText);
+                
+                viewportContainer.appendChild(progressOverlay);
+                
+                this.progressOverlay = progressOverlay;
+                this.progressBarFill = progressBarFill;
+                this.progressText = progressText;
 
                 container.appendChild(viewportContainer);
-                container.appendChild(controlBar);
 
                 /* ---- DOM widget ------------------------------------ */
                 const widget = this.addDOMWidget("usd_renderer", "HTML", container);
@@ -551,7 +827,7 @@ app.registerExtension({
                 /* ---- Instantiate Viewport ------------------------- */
                 const viewport = new USDViewport(viewportContainer, {
                     width: NODE_W,
-                    height: NODE_H - 40,
+                    height: NODE_H,
                 });
 
                 this.viewport = viewport;
@@ -571,14 +847,16 @@ app.registerExtension({
                     if (parentNode.viewport && parentNode.viewport.currentModelPath) {
                         return {
                             filePath: parentNode.viewport.currentModelPath,
-                            usdaText: parentNode.viewport.currentUsdaText
+                            usdaText: parentNode.viewport.currentUsdaText,
+                            usdHash: parentNode.viewport.currentUsdHash
                         };
                     }
                     
                     if (parentNode.last_execution_message) {
                         const path = parentNode.last_execution_message.usd_info?.[0];
                         const text = parentNode.last_execution_message.usda_text?.[0];
-                        if (path) return { filePath: path, usdaText: text };
+                        const hash = parentNode.last_execution_message.usd_hash?.[0];
+                        if (path) return { filePath: path, usdaText: text, usdHash: hash };
                     }
                     
                     return findUpstreamUSDInfo(parentNode);
@@ -587,19 +865,19 @@ app.registerExtension({
                 // Sync loaded model from upstream USD nodes
                 const syncModelFromUpstream = () => {
                     const upstream = findUpstreamUSDInfo(this);
-                    if (upstream && upstream.filePath && upstream.filePath !== this.viewport.currentModelPath) {
-                        this.viewport.loadUSD(upstream.filePath, upstream.usdaText).then(() => {
-                            setTimeout(() => captureAndUploadRender(this), 300);
-                        });
+                    if (upstream && upstream.filePath) {
+                        const hasHashChanged = upstream.usdHash !== this.viewport.currentUsdHash;
+                        const hasPathChanged = upstream.filePath !== this.viewport.currentModelPath;
+                        if (hasPathChanged || hasHashChanged) {
+                            this.viewport.loadUSD(upstream.filePath, upstream.usdaText, null, upstream.usdHash).then(() => {
+                                // Capture/upload on connection sync
+                                setTimeout(() => captureAndUploadRender(this), 300);
+                            });
+                        }
                     }
                 };
 
-                // Wire up manual capture button
                 const self = this;
-                captureBtn.addEventListener('click', () => {
-                    syncModelFromUpstream();
-                    captureAndUploadRender(self);
-                });
 
                 // Wire up dynamic change capture listeners on the canvas
                 let debounceTimer = null;
@@ -626,14 +904,75 @@ app.registerExtension({
                     clearInterval(checkInterval);
                 };
 
-                // Hide file path inputs in the widget list to keep layout clean
+                // Hide file path inputs in the widget list to keep layout clean, and setup render_mode visibility toggles
                 setTimeout(() => {
                     const hiddenWidgets = ["beauty_file", "depth_file", "normal_file"];
-                    this.widgets?.forEach(w => {
+                    self.widgets?.forEach(w => {
                         if (hiddenWidgets.includes(w.name)) {
                             w.type = "converted";
                         }
                     });
+
+                    // Explicitly remove them from the node's inputs list to avoid showing input sockets
+                    hiddenWidgets.forEach(name => {
+                        const idx = self.inputs?.findIndex(inp => inp.name === name);
+                        if (idx !== undefined && idx !== -1) {
+                            self.removeInput(idx);
+                        }
+                    });
+
+                    const toggleWidgets = () => {
+                        const renderModeWidget = self.widgets?.find(w => w.name === "render_mode");
+                        if (!renderModeWidget) return;
+
+                        const renderMode = renderModeWidget.value;
+                        const frameWidget = self.widgets?.find(w => w.name === "frame");
+                        const startFrameWidget = self.widgets?.find(w => w.name === "start_frame");
+                        const endFrameWidget = self.widgets?.find(w => w.name === "end_frame");
+
+                        if (frameWidget && startFrameWidget && endFrameWidget) {
+                            if (frameWidget.origType === undefined) frameWidget.origType = frameWidget.type;
+                            if (startFrameWidget.origType === undefined) startFrameWidget.origType = startFrameWidget.type;
+                            if (endFrameWidget.origType === undefined) endFrameWidget.origType = endFrameWidget.type;
+
+                            if (renderMode === "single_frame") {
+                                // Show frame
+                                frameWidget.type = frameWidget.origType;
+                                // Hide start_frame and end_frame
+                                startFrameWidget.type = "converted";
+                                endFrameWidget.type = "converted";
+                            } else if (renderMode === "frame_range") {
+                                // Hide frame
+                                frameWidget.type = "converted";
+                                // Show start_frame and end_frame
+                                startFrameWidget.type = startFrameWidget.origType;
+                                endFrameWidget.type = endFrameWidget.origType;
+                            }
+                            
+                            self.setSize(self.computeSize());
+                            app.canvas.draw(true, true);
+                        }
+                    };
+
+                    const renderModeWidget = self.widgets?.find(w => w.name === "render_mode");
+                    if (renderModeWidget) {
+                        const originalCallback = renderModeWidget.callback;
+                        renderModeWidget.callback = function(value) {
+                            const res = originalCallback ? originalCallback.apply(this, arguments) : value;
+                            setTimeout(() => toggleWidgets(), 0);
+                            return res;
+                        };
+                    }
+
+                    const originalOnWidgetChanged = this.onWidgetChanged;
+                    this.onWidgetChanged = function(name, value, old_value, widget) {
+                        originalOnWidgetChanged?.apply(this, arguments);
+                        if (name === "render_mode") {
+                            setTimeout(() => toggleWidgets(), 0);
+                        }
+                    };
+
+                    toggleWidgets();
                 }, 100);
             };
 
@@ -647,6 +986,11 @@ app.registerExtension({
 
                 const filePath = message?.usd_info?.[0];
                 const usdaText = message?.usda_text?.[0];
+                const usdHash = message?.usd_hash?.[0];
+                const renderMode = message?.render_mode?.[0] || "single_frame";
+                const frame = message?.frame?.[0] !== undefined ? message.frame[0] : 0;
+                const startFrame = message?.start_frame?.[0] !== undefined ? message.start_frame[0] : 0;
+                const endFrame = message?.end_frame?.[0] !== undefined ? message.end_frame[0] : 0;
 
                 if (filePath) {
                     activeInterceptorBaseDir = filePath.substring(0, filePath.lastIndexOf('/')) + '/';
@@ -654,11 +998,29 @@ app.registerExtension({
 
                 if (!filePath && !usdaText) return;
 
+                const isSameModel = (filePath && this.viewport.currentModelPath === filePath && this.viewport.currentUsdHash === usdHash) ||
+                                    (!filePath && usdaText && this.viewport.currentUsdaText === usdaText && this.viewport.currentUsdHash === usdHash);
+
                 try {
-                    await this.viewport.loadUSD(filePath, usdaText);
-                    setTimeout(() => {
-                        captureAndUploadRender(this);
-                    }, 500);
+                    if (isSameModel) {
+                        if (renderMode === "frame_range") {
+                            await captureAndUploadRange(this, startFrame, endFrame);
+                        } else {
+                            this.viewport.setFrame(frame);
+                            setTimeout(() => {
+                                captureAndUploadRender(this);
+                            }, 100);
+                        }
+                    } else {
+                        await this.viewport.loadUSD(filePath, usdaText, renderMode === "frame_range" ? startFrame : frame, usdHash);
+                        if (renderMode === "frame_range") {
+                            await captureAndUploadRange(this, startFrame, endFrame);
+                        } else {
+                            setTimeout(() => {
+                                captureAndUploadRender(this);
+                            }, 500);
+                        }
+                    }
                 } catch (error) {
                     console.error("[USD] Failed to load model for render:", error);
                 }

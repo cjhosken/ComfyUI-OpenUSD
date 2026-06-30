@@ -27,10 +27,6 @@ class TransformUSDPrim:
         usd_path = USD.get("usd_info", "")
         usda_text = USD.get("usda_text", "")
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"transform_{uuid.uuid4().hex}.usda")
-
         # Unpack VEC3 values safely
         t_x, t_y, t_z = 0.0, 0.0, 0.0
         if isinstance(translation, (list, tuple)) and len(translation) >= 3:
@@ -44,79 +40,53 @@ class TransformUSDPrim:
         if isinstance(scale, (list, tuple)) and len(scale) >= 3:
             s_x, s_y, s_z = float(scale[0]), float(scale[1]), float(scale[2])
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
+        if not prim_path.startswith("/"):
+            prim_path = "/" + prim_path
 
-        try:
-            if not prim_path.startswith("/"):
-                prim_path = "/" + prim_path
+        stage = Usd.Stage.CreateInMemory()
+        if usda_text:
+            stage.GetRootLayer().ImportFromString(usda_text)
+        elif usd_path and os.path.exists(usd_path):
+            abs_usd_path = os.path.abspath(usd_path)
+            stage.GetRootLayer().subLayerPaths.append(abs_usd_path)
 
-            stage = Usd.Stage.Open(usd_path)
-            
-            # Resolve target prims with wildcard matching
-            matched_prims = []
-            if "*" in prim_path or "?" in prim_path:
-                for p in stage.Traverse():
-                    if fnmatch.fnmatch(str(p.GetPath()), prim_path):
-                        matched_prims.append(p)
+        # Resolve target prims with wildcard matching
+        matched_prims = []
+        if "*" in prim_path or "?" in prim_path:
+            for p in stage.Traverse():
+                if fnmatch.fnmatch(str(p.GetPath()), prim_path):
+                    matched_prims.append(p)
+        else:
+            prim = stage.GetPrimAtPath(prim_path)
+            if prim.IsValid():
+                matched_prims.append(prim)
             else:
-                prim = stage.GetPrimAtPath(prim_path)
-                if prim.IsValid():
-                    matched_prims.append(prim)
-                else:
-                    prim = stage.DefinePrim(prim_path, "Xform")
-                    matched_prims.append(prim)
+                prim = stage.DefinePrim(prim_path, "Xform")
+                matched_prims.append(prim)
 
-            for prim in matched_prims:
-                xformable = UsdGeom.Xformable(prim)
-                if not xformable:
-                    continue
-                
-                # Update Translation
-                translate_op = None
-                for op in xformable.GetOrderedXformOps():
-                    if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
-                        translate_op = op
-                        break
-                if not translate_op:
-                    translate_op = xformable.AddTranslateOp()
-                translate_op.Set(Gf.Vec3d(t_x, t_y, t_z))
+        for prim in matched_prims:
+            xformable = UsdGeom.Xformable(prim)
+            if not xformable:
+                continue
+            
+            # Clear existing transform operations (such as xformOp:transform matrix)
+            # to prevent conflict and ensure absolute translate/rotate/scale are applied in standard TRS order.
+            xformable.ClearXformOpOrder()
+            
+            # Create and set Translation
+            translate_op = xformable.AddTranslateOp()
+            translate_op.Set(Gf.Vec3d(t_x, t_y, t_z))
 
-                # Update Rotation
-                rotate_op = None
-                for op in xformable.GetOrderedXformOps():
-                    if op.GetOpType() == UsdGeom.XformOp.TypeRotateXYZ:
-                        rotate_op = op
-                        break
-                if not rotate_op:
-                    rotate_op = xformable.AddRotateXYZOp()
-                rotate_op.Set(Gf.Vec3f(r_x, r_y, r_z))
+            # Create and set Rotation
+            rotate_op = xformable.AddRotateXYZOp()
+            rotate_op.Set(Gf.Vec3f(r_x, r_y, r_z))
 
-                # Update Scale
-                scale_op = None
-                for op in xformable.GetOrderedXformOps():
-                    if op.GetOpType() == UsdGeom.XformOp.TypeScale:
-                        scale_op = op
-                        break
-                if not scale_op:
-                    scale_op = xformable.AddScaleOp()
-                scale_op.Set(Gf.Vec3f(s_x, s_y, s_z))
+            # Create and set Scale
+            scale_op = xformable.AddScaleOp()
+            scale_op.Set(Gf.Vec3f(s_x, s_y, s_z))
 
-            stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_path)}"
-            stage.GetRootLayer().Export(out_path)
-            new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
-
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
+        new_usda_text = stage.GetRootLayer().ExportToString()
+        return ({"usd_info": usd_path, "usda_text": new_usda_text},)
 
 class CreateUSDLight:
     CATEGORY = "3d/USD/Scene"
@@ -166,66 +136,50 @@ class CreateUSDLight:
         usd_path = USD.get("usd_info", "")
         usda_text = USD.get("usda_text", "")
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"light_{uuid.uuid4().hex}.usda")
+        if not prim_path.startswith("/"):
+            prim_path = "/" + prim_path
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
+        stage = Usd.Stage.CreateInMemory()
+        if usda_text:
+            stage.GetRootLayer().ImportFromString(usda_text)
+        elif usd_path and os.path.exists(usd_path):
+            abs_usd_path = os.path.abspath(usd_path)
+            stage.GetRootLayer().subLayerPaths.append(abs_usd_path)
 
-        try:
-            if not prim_path.startswith("/"):
-                prim_path = "/" + prim_path
+        # Create or get the light prim
+        prim = stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            if light_type == "DomeLight":
+                light = UsdLux.DomeLight.Define(stage, prim_path)
+            elif light_type == "DistantLight":
+                light = UsdLux.DistantLight.Define(stage, prim_path)
+            elif light_type == "SphereLight":
+                light = UsdLux.SphereLight.Define(stage, prim_path)
+            elif light_type == "RectLight":
+                light = UsdLux.RectLight.Define(stage, prim_path)
+            prim = light.GetPrim()
+        else:
+            # If editing, cast to light
+            if light_type == "DomeLight":
+                light = UsdLux.DomeLight(prim)
+            elif light_type == "DistantLight":
+                light = UsdLux.DistantLight(prim)
+            elif light_type == "SphereLight":
+                light = UsdLux.SphereLight(prim)
+            elif light_type == "RectLight":
+                light = UsdLux.RectLight(prim)
 
-            stage = Usd.Stage.Open(usd_path)
+        if prim.IsValid():
+            self.apply_attr(prim, "intensity", intensity, intensity_mode, Sdf.ValueTypeNames.Float)
+            self.apply_attr(prim, "exposure", exposure, exposure_mode, Sdf.ValueTypeNames.Float)
+            self.apply_attr(prim, "color", Gf.Vec3f(color_r, color_g, color_b), color_mode, Sdf.ValueTypeNames.Color3f)
             
-            # Create or get the light prim
-            prim = stage.GetPrimAtPath(prim_path)
-            if not prim.IsValid():
-                if light_type == "DomeLight":
-                    light = UsdLux.DomeLight.Define(stage, prim_path)
-                elif light_type == "DistantLight":
-                    light = UsdLux.DistantLight.Define(stage, prim_path)
-                elif light_type == "SphereLight":
-                    light = UsdLux.SphereLight.Define(stage, prim_path)
-                elif light_type == "RectLight":
-                    light = UsdLux.RectLight.Define(stage, prim_path)
-                prim = light.GetPrim()
-            else:
-                # If editing, cast to light
-                if light_type == "DomeLight":
-                    light = UsdLux.DomeLight(prim)
-                elif light_type == "DistantLight":
-                    light = UsdLux.DistantLight(prim)
-                elif light_type == "SphereLight":
-                    light = UsdLux.SphereLight(prim)
-                elif light_type == "RectLight":
-                    light = UsdLux.RectLight(prim)
+            if light_type == "DomeLight":
+                abs_tex = os.path.abspath(texture_path) if texture_path.strip() else ""
+                self.apply_attr(prim, "texture:file", Sdf.AssetPath(abs_tex) if abs_tex else "", texture_mode, Sdf.ValueTypeNames.Asset)
 
-            if prim.IsValid():
-                self.apply_attr(prim, "intensity", intensity, intensity_mode, Sdf.ValueTypeNames.Float)
-                self.apply_attr(prim, "exposure", exposure, exposure_mode, Sdf.ValueTypeNames.Float)
-                self.apply_attr(prim, "color", Gf.Vec3f(color_r, color_g, color_b), color_mode, Sdf.ValueTypeNames.Color3f)
-                
-                if light_type == "DomeLight":
-                    abs_tex = os.path.abspath(texture_path) if texture_path.strip() else ""
-                    self.apply_attr(prim, "texture:file", Sdf.AssetPath(abs_tex) if abs_tex else "", texture_mode, Sdf.ValueTypeNames.Asset)
-
-            stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_path)}"
-            stage.GetRootLayer().Export(out_path)
-            new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
-
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
+        new_usda_text = stage.GetRootLayer().ExportToString()
+        return ({"usd_info": usd_path, "usda_text": new_usda_text},)
 
 class CreateUSDCamera:
     CATEGORY = "3d/USD/Scene"
@@ -275,66 +229,50 @@ class CreateUSDCamera:
         usd_path = USD.get("usd_info", "")
         usda_text = USD.get("usda_text", "")
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"camera_{uuid.uuid4().hex}.usda")
+        if not prim_path.startswith("/"):
+            prim_path = "/" + prim_path
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
+        stage = Usd.Stage.CreateInMemory()
+        if usda_text:
+            stage.GetRootLayer().ImportFromString(usda_text)
+        elif usd_path and os.path.exists(usd_path):
+            abs_usd_path = os.path.abspath(usd_path)
+            stage.GetRootLayer().subLayerPaths.append(abs_usd_path)
 
-        try:
-            if not prim_path.startswith("/"):
-                prim_path = "/" + prim_path
+        prim = stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            cam = UsdGeom.Camera.Define(stage, prim_path)
+            prim = cam.GetPrim()
+        else:
+            cam = UsdGeom.Camera(prim)
 
-            stage = Usd.Stage.Open(usd_path)
+        if prim.IsValid():
+            self.apply_attr(prim, "focalLength", focal_length, focal_length_mode, Sdf.ValueTypeNames.Float)
+            self.apply_attr(prim, "horizontalAperture", horizontal_aperture, horizontal_aperture_mode, Sdf.ValueTypeNames.Float)
+            self.apply_attr(prim, "verticalAperture", vertical_aperture, vertical_aperture_mode, Sdf.ValueTypeNames.Float)
             
-            prim = stage.GetPrimAtPath(prim_path)
-            if not prim.IsValid():
-                cam = UsdGeom.Camera.Define(stage, prim_path)
-                prim = cam.GetPrim()
-            else:
-                cam = UsdGeom.Camera(prim)
+            # Clipping range requires combining near and far clips into a float2
+            if near_clip_mode == "block" or far_clip_mode == "block":
+                clip_attr = prim.GetAttribute("clippingRange")
+                if not clip_attr.IsValid():
+                    clip_attr = prim.CreateAttribute("clippingRange", Sdf.ValueTypeNames.Float2)
+                clip_attr.BlockOpinion()
+            elif near_clip_mode == "create/set" or far_clip_mode == "create/set":
+                # Get existing clipping range to preserve unaffected values
+                curr_val = Gf.Vec2f(near_clip, far_clip)
+                clip_attr = prim.GetAttribute("clippingRange")
+                if clip_attr.IsValid() and clip_attr.HasValue():
+                    ex_val = clip_attr.Get()
+                    curr_val = Gf.Vec2f(
+                        near_clip if near_clip_mode == "create/set" else ex_val[0],
+                        far_clip if far_clip_mode == "create/set" else ex_val[1]
+                    )
+                if not clip_attr.IsValid():
+                    clip_attr = prim.CreateAttribute("clippingRange", Sdf.ValueTypeNames.Float2)
+                clip_attr.Set(curr_val)
 
-            if prim.IsValid():
-                self.apply_attr(prim, "focalLength", focal_length, focal_length_mode, Sdf.ValueTypeNames.Float)
-                self.apply_attr(prim, "horizontalAperture", horizontal_aperture, horizontal_aperture_mode, Sdf.ValueTypeNames.Float)
-                self.apply_attr(prim, "verticalAperture", vertical_aperture, vertical_aperture_mode, Sdf.ValueTypeNames.Float)
-                
-                # Clipping range requires combining near and far clips into a float2
-                if near_clip_mode == "block" or far_clip_mode == "block":
-                    clip_attr = prim.GetAttribute("clippingRange")
-                    if not clip_attr.IsValid():
-                        clip_attr = prim.CreateAttribute("clippingRange", Sdf.ValueTypeNames.Float2)
-                    clip_attr.BlockOpinion()
-                elif near_clip_mode == "create/set" or far_clip_mode == "create/set":
-                    # Get existing clipping range to preserve unaffected values
-                    curr_val = Gf.Vec2f(near_clip, far_clip)
-                    clip_attr = prim.GetAttribute("clippingRange")
-                    if clip_attr.IsValid() and clip_attr.HasValue():
-                        ex_val = clip_attr.Get()
-                        curr_val = Gf.Vec2f(
-                            near_clip if near_clip_mode == "create/set" else ex_val[0],
-                            far_clip if far_clip_mode == "create/set" else ex_val[1]
-                        )
-                    if not clip_attr.IsValid():
-                        clip_attr = prim.CreateAttribute("clippingRange", Sdf.ValueTypeNames.Float2)
-                    clip_attr.Set(curr_val)
-
-            stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_path)}"
-            stage.GetRootLayer().Export(out_path)
-            new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
-
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
+        new_usda_text = stage.GetRootLayer().ExportToString()
+        return ({"usd_info": usd_path, "usda_text": new_usda_text},)
 
 class FlattenUSDStage:
     CATEGORY = "3d/USD/Scene"
@@ -358,26 +296,31 @@ class FlattenUSDStage:
 
         temp_dir = folder_paths.get_temp_directory()
         os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"flattened_{uuid.uuid4().hex}.usda")
-
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
+        
+        # Write to a temporary file to evaluate references/sublayers correctly during Flatten
+        import uuid
+        if usd_path and os.path.exists(usd_path):
+            base_dir = os.path.dirname(os.path.abspath(usd_path))
+            temp_in = os.path.join(base_dir, f".temp_flatten_in_{uuid.uuid4().hex}.usda")
+        else:
             temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
+
+        if usda_text:
+            with open(temp_in, "w", encoding="utf-8") as f:
                 f.write(usda_text)
-            usd_path = temp_in
+        elif usd_path and os.path.exists(usd_path):
+            abs_usd_path = os.path.abspath(usd_path)
+            with open(temp_in, "w", encoding="utf-8") as f:
+                f.write(f'#usda 1.0\n(\n    subLayerPaths = [\n        @{abs_usd_path}@\n    ]\n)\n')
 
         try:
-            stage = Usd.Stage.Open(usd_path)
+            stage = Usd.Stage.Open(temp_in)
             flat_layer = stage.Flatten()
-            
-            flat_layer.comment = f"usd_info: {os.path.abspath(out_path)}"
-            flat_layer.Export(out_path)
             new_usda_text = flat_layer.ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
+            return ({"usd_info": usd_path, "usda_text": new_usda_text},)
 
         finally:
-            if temp_in and os.path.exists(temp_in):
+            if os.path.exists(temp_in):
                 try:
                     os.remove(temp_in)
                 except:
@@ -405,35 +348,19 @@ class ConfigureUSDStage:
         usd_path = USD.get("usd_info", "")
         usda_text = USD.get("usda_text", "")
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"config_{uuid.uuid4().hex}.usda")
+        stage = Usd.Stage.CreateInMemory()
+        if usda_text:
+            stage.GetRootLayer().ImportFromString(usda_text)
+        elif usd_path and os.path.exists(usd_path):
+            abs_usd_path = os.path.abspath(usd_path)
+            stage.GetRootLayer().subLayerPaths.append(abs_usd_path)
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
+        # Apply coordinate up-axis
+        axis_token = UsdGeom.Tokens.y if up_axis == "Y" else UsdGeom.Tokens.z
+        UsdGeom.SetStageUpAxis(stage, axis_token)
+        
+        # Apply meters-per-unit metric system scale
+        UsdGeom.SetStageMetersPerUnit(stage, meters_per_unit)
 
-        try:
-            stage = Usd.Stage.Open(usd_path)
-            
-            # Apply coordinate up-axis
-            axis_token = UsdGeom.Tokens.y if up_axis == "Y" else UsdGeom.Tokens.z
-            UsdGeom.SetStageUpAxis(stage, axis_token)
-            
-            # Apply meters-per-unit metric system scale
-            UsdGeom.SetStageMetersPerUnit(stage, meters_per_unit)
-
-            stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_path)}"
-            stage.GetRootLayer().Export(out_path)
-            new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
-
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
+        new_usda_text = stage.GetRootLayer().ExportToString()
+        return ({"usd_info": usd_path, "usda_text": new_usda_text},)
