@@ -140,7 +140,7 @@ class SaveUSD:
         root_layer.Export(output_path)
 
         saved_stage = Usd.Stage.Open(output_path)
-        saved_root_layer = stage.GetRootLayer()
+        saved_root_layer = saved_stage.GetRootLayer()
 
         if package_assets:
             self._package_assets(saved_stage, make_paths_relative)
