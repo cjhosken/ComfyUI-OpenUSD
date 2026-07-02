@@ -1,7 +1,6 @@
 import os
 import shutil
-from pxr import Usd, Sdf, Ar
-
+from pxr import Usd, Sdf
 
 class LoadUSD:
     CATEGORY = "3d/USD/IO"
@@ -148,8 +147,8 @@ class SaveUSD:
 
         self._resolve_paths(saved_root_layer, make_paths_relative)
         
-        stage.GetRootLayer().Save()
+        saved_root_layer.Save()
 
         print(f"[SaveUSD] Saved correctly with textures resolved to {output_path}")
 
-        return (USD,)
+        return ({"stage":saved_stage})

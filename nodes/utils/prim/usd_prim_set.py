@@ -1,4 +1,6 @@
-import folder_paths
+from pxr import UsdGeom, Sdf, Tf, Gf
+import json
+import fnmatch
 
 class SetUSDPrimInfo:
     CATEGORY = "3d/USD/Prim"
@@ -11,34 +13,17 @@ class SetUSDPrimInfo:
         return {
             "required": {
                 "USD": ("USD",),
-                "prim_info_json": ("STRING", {"multiline": True}),
+                "prim_json": ("STRING", {"multiline": True}),
                 "action": (["overwrite", "merge", "update"], {"default": "merge"}),
             }
         }
 
     def set_info(self, USD, prim_info_json, action="merge"):
-        from pxr import Usd, UsdGeom, Sdf, Tf, Gf
-        import json
-        import os
-        import uuid
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        
-        if usd_path and os.path.exists(usd_path):
-            # Work directly on the original file
-            stage = Usd.Stage.Open(usd_path)
-        else:
-            # If no valid file path, create a temp file from the usda_text
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            stage = Usd.Stage.Open(temp_in)
-            # We'll need to save back to this temp file
-            usd_path = temp_in
+        stage = USD.get("stage", None)
+
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
         try:
             prim_data = json.loads(prim_info_json)
@@ -53,25 +38,14 @@ class SetUSDPrimInfo:
                 # Set prim info based on action
                 self.apply_prim_info(prim, prim_info, action)
             
-            new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_info": usd_path, "usda_text": new_usda_text},)
-            
         except Exception as e:
             print(f"Error in SetPrimInfo: {e}")
             # Return original USD on error
-            return (USD,)
-
-        finally:
-            # Clean up temp file if we created one
-            if usd_path and usd_path.startswith(temp_dir) and os.path.exists(usd_path):
-                try:
-                    os.remove(usd_path)
-                except:
-                    pass
+        
+        return ({"stage": stage},)
 
     def apply_prim_info(self, prim, prim_info, action):
         """Apply information to a USD prim"""
-        from pxr import Usd, UsdGeom, Sdf, Tf, Gf
         
         # Set properties
         if "properties" in prim_info and isinstance(prim_info["properties"], dict):
@@ -98,7 +72,6 @@ class SetUSDPrimInfo:
 
     def set_prim_metadata(self, prim, field, value):
         """Set metadata on a USD prim using the correct API"""
-        from pxr import Usd, Sdf
         
         try:
             # Get the prim spec
@@ -145,7 +118,6 @@ class SetUSDPrimInfo:
 
     def apply_property(self, prim, prop_name, prop_info, action):
         """Apply property to prim"""
-        from pxr import Sdf
         
         if not isinstance(prop_info, dict):
             return
@@ -183,7 +155,6 @@ class SetUSDPrimInfo:
 
     def apply_primvars(self, prim, primvars_info, action):
         """Apply primvars to prim"""
-        from pxr import UsdGeom, Sdf
         
         try:
             geom = UsdGeom.Gprim(prim)
@@ -222,7 +193,6 @@ class SetUSDPrimInfo:
 
     def apply_relationship(self, prim, rel_name, rel_info, action):
         """Apply relationship to prim"""
-        from pxr import Sdf
         
         if action in ["overwrite", "update"]:
             rel = prim.GetRelationship(rel_name)
@@ -238,7 +208,6 @@ class SetUSDPrimInfo:
 
     def get_sdf_type(self, type_name):
         """Convert type name string to SDF type"""
-        from pxr import Sdf
         
         type_map = {
             "string": Sdf.ValueTypeNames.String,
@@ -270,7 +239,6 @@ class SetUSDPrimInfo:
 
     def deserialize_value(self, value):
         """Convert JSON value back to USD type"""
-        from pxr import Gf, Sdf, Tf
         
         if value is None:
             return None
@@ -328,8 +296,6 @@ class SetUSDAttribute:
         }
 
     def cast_value_to_usd_type(self, value, type_name):
-        from pxr import Gf, Sdf, Tf
-        import json
         
         if value is None:
             return None
@@ -437,78 +403,55 @@ class SetUSDAttribute:
         return str(value)
 
     def set_attribute(self, USD, prim_path, attribute_name, attribute_type, value):
-        from pxr import Usd, Sdf, Gf
-        import os
-        import uuid
-        import fnmatch
-        import folder_paths
 
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"set_attr_{uuid.uuid4().hex}.usda")
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
 
-        try:
-            if not prim_path.startswith("/"):
-                prim_path = "/" + prim_path
 
-            stage = Usd.Stage.Open(usd_path)
 
-            # Resolve target prims with wildcard matching
-            matched_prims = []
-            if "*" in prim_path or "?" in prim_path:
-                for p in stage.Traverse():
-                    if fnmatch.fnmatch(str(p.GetPath()), prim_path):
-                        matched_prims.append(p)
+        if not prim_path.startswith("/"):
+            prim_path = "/" + prim_path
+
+
+        # Resolve target prims with wildcard matching
+        matched_prims = []
+        if "*" in prim_path or "?" in prim_path:
+            for p in stage.Traverse():
+                if fnmatch.fnmatch(str(p.GetPath()), prim_path):
+                    matched_prims.append(p)
+        else:
+            prim = stage.GetPrimAtPath(prim_path)
+            if prim.IsValid():
+                matched_prims.append(prim)
             else:
-                prim = stage.GetPrimAtPath(prim_path)
-                if prim.IsValid():
-                    matched_prims.append(prim)
-                else:
-                    prim = stage.DefinePrim(prim_path, "Xform")
-                    matched_prims.append(prim)
+                prim = stage.DefinePrim(prim_path, "Xform")
+                matched_prims.append(prim)
 
-            # Map alias type string to Sdf type
-            alias_map = {
-                "Vec3f": "float3",
-                "Vec3d": "double3",
-            }
-            resolved_type_str = alias_map.get(attribute_type, attribute_type)
-            type_name = Sdf.GetValueTypeByName(resolved_type_str)
-            if not type_name:
-                type_name = Sdf.ValueTypeNames.String
+        # Map alias type string to Sdf type
+        alias_map = {
+            "Vec3f": "float3",
+            "Vec3d": "double3",
+        }
+        resolved_type_str = alias_map.get(attribute_type, attribute_type)
+        type_name = Sdf.GetValueTypeByName(resolved_type_str)
+        if not type_name:
+            type_name = Sdf.ValueTypeNames.String
 
-            # Type cast the value
-            try:
-                typed_val = self.cast_value_to_usd_type(value, type_name)
-            except Exception as e:
-                print(f"[SetUSDAttribute] Value conversion failed for type {attribute_type}: {e}")
-                raise ValueError(f"Failed to convert value to type {attribute_type}: {e}")
+        # Type cast the value
+        try:
+            typed_val = self.cast_value_to_usd_type(value, type_name)
+        except Exception as e:
+            print(f"[SetUSDAttribute] Value conversion failed for type {attribute_type}: {e}")
+            raise ValueError(f"Failed to convert value to type {attribute_type}: {e}")
 
-            for prim in matched_prims:
-                if attribute_name.strip():
-                    attr = prim.GetAttribute(attribute_name)
-                    if not attr.IsValid():
-                        attr = prim.CreateAttribute(attribute_name, type_name)
-                    attr.Set(typed_val)
+        for prim in matched_prims:
+            if attribute_name.strip():
+                attr = prim.GetAttribute(attribute_name)
+                if not attr.IsValid():
+                    attr = prim.CreateAttribute(attribute_name, type_name)
+                attr.Set(typed_val)
 
-            stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_path)}"
-            stage.GetRootLayer().Export(out_path)
-            new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
-
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
+        return ({"stage": stage},)

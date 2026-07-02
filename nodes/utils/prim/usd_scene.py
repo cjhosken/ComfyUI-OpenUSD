@@ -1,7 +1,7 @@
 import os
 import uuid
-import folder_paths
 import fnmatch
+from pxr import UsdGeom, Gf, Sdf, UsdLux
 
 class TransformUSDPrim:
     CATEGORY = "3d/USD/Scene"
@@ -22,10 +22,10 @@ class TransformUSDPrim:
         }
 
     def transform_prim(self, USD, prim_path, translation, rotation, scale):
-        from pxr import Usd, UsdGeom, Gf
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
+
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
         # Unpack VEC3 values safely
         t_x, t_y, t_z = 0.0, 0.0, 0.0
@@ -43,12 +43,6 @@ class TransformUSDPrim:
         if not prim_path.startswith("/"):
             prim_path = "/" + prim_path
 
-        stage = Usd.Stage.CreateInMemory()
-        if usda_text:
-            stage.GetRootLayer().ImportFromString(usda_text)
-        elif usd_path and os.path.exists(usd_path):
-            abs_usd_path = os.path.abspath(usd_path)
-            stage.GetRootLayer().subLayerPaths.append(abs_usd_path)
 
         # Resolve target prims with wildcard matching
         matched_prims = []
@@ -85,8 +79,7 @@ class TransformUSDPrim:
             scale_op = xformable.AddScaleOp()
             scale_op.Set(Gf.Vec3f(s_x, s_y, s_z))
 
-        new_usda_text = stage.GetRootLayer().ExportToString()
-        return ({"usd_info": usd_path, "usda_text": new_usda_text},)
+        return ({"stage": stage},)
 
 class CreateUSDLight:
     CATEGORY = "3d/USD/Scene"
@@ -131,20 +124,14 @@ class CreateUSDLight:
     def create_light(self, USD, prim_path, light_type, intensity, intensity_mode,
                      exposure, exposure_mode, color_r, color_g, color_b, color_mode,
                      texture_path="", texture_mode="ignore"):
-        from pxr import Usd, UsdLux, Gf, Sdf
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
+
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
         if not prim_path.startswith("/"):
             prim_path = "/" + prim_path
 
-        stage = Usd.Stage.CreateInMemory()
-        if usda_text:
-            stage.GetRootLayer().ImportFromString(usda_text)
-        elif usd_path and os.path.exists(usd_path):
-            abs_usd_path = os.path.abspath(usd_path)
-            stage.GetRootLayer().subLayerPaths.append(abs_usd_path)
 
         # Create or get the light prim
         prim = stage.GetPrimAtPath(prim_path)
@@ -178,8 +165,7 @@ class CreateUSDLight:
                 abs_tex = os.path.abspath(texture_path) if texture_path.strip() else ""
                 self.apply_attr(prim, "texture:file", Sdf.AssetPath(abs_tex) if abs_tex else "", texture_mode, Sdf.ValueTypeNames.Asset)
 
-        new_usda_text = stage.GetRootLayer().ExportToString()
-        return ({"usd_info": usd_path, "usda_text": new_usda_text},)
+        return ({"stage": stage},)
 
 class CreateUSDCamera:
     CATEGORY = "3d/USD/Scene"
@@ -224,20 +210,14 @@ class CreateUSDCamera:
                       horizontal_aperture, horizontal_aperture_mode,
                       vertical_aperture, vertical_aperture_mode,
                       near_clip, near_clip_mode, far_clip, far_clip_mode):
-        from pxr import Usd, UsdGeom, Gf, Sdf
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
+
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
         if not prim_path.startswith("/"):
             prim_path = "/" + prim_path
 
-        stage = Usd.Stage.CreateInMemory()
-        if usda_text:
-            stage.GetRootLayer().ImportFromString(usda_text)
-        elif usd_path and os.path.exists(usd_path):
-            abs_usd_path = os.path.abspath(usd_path)
-            stage.GetRootLayer().subLayerPaths.append(abs_usd_path)
 
         prim = stage.GetPrimAtPath(prim_path)
         if not prim.IsValid():
@@ -271,60 +251,7 @@ class CreateUSDCamera:
                     clip_attr = prim.CreateAttribute("clippingRange", Sdf.ValueTypeNames.Float2)
                 clip_attr.Set(curr_val)
 
-        new_usda_text = stage.GetRootLayer().ExportToString()
-        return ({"usd_info": usd_path, "usda_text": new_usda_text},)
-
-class FlattenUSDStage:
-    CATEGORY = "3d/USD/Scene"
-    FUNCTION = "flatten_stage"
-    RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "USD": ("USD",),
-            }
-        }
-
-    def flatten_stage(self, USD):
-        from pxr import Usd
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
-
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        
-        # Write to a temporary file to evaluate references/sublayers correctly during Flatten
-        import uuid
-        if usd_path and os.path.exists(usd_path):
-            base_dir = os.path.dirname(os.path.abspath(usd_path))
-            temp_in = os.path.join(base_dir, f".temp_flatten_in_{uuid.uuid4().hex}.usda")
-        else:
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-
-        if usda_text:
-            with open(temp_in, "w", encoding="utf-8") as f:
-                f.write(usda_text)
-        elif usd_path and os.path.exists(usd_path):
-            abs_usd_path = os.path.abspath(usd_path)
-            with open(temp_in, "w", encoding="utf-8") as f:
-                f.write(f'#usda 1.0\n(\n    subLayerPaths = [\n        @{abs_usd_path}@\n    ]\n)\n')
-
-        try:
-            stage = Usd.Stage.Open(temp_in)
-            flat_layer = stage.Flatten()
-            new_usda_text = flat_layer.ExportToString()
-            return ({"usd_info": usd_path, "usda_text": new_usda_text},)
-
-        finally:
-            if os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
+        return ({"stage": stage,},)
 
 class ConfigureUSDStage:
     CATEGORY = "3d/USD/Scene"
@@ -343,17 +270,11 @@ class ConfigureUSDStage:
         }
 
     def configure_stage(self, USD, up_axis, meters_per_unit):
-        from pxr import Usd, UsdGeom
         
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
 
-        stage = Usd.Stage.CreateInMemory()
-        if usda_text:
-            stage.GetRootLayer().ImportFromString(usda_text)
-        elif usd_path and os.path.exists(usd_path):
-            abs_usd_path = os.path.abspath(usd_path)
-            stage.GetRootLayer().subLayerPaths.append(abs_usd_path)
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
         # Apply coordinate up-axis
         axis_token = UsdGeom.Tokens.y if up_axis == "Y" else UsdGeom.Tokens.z
@@ -362,5 +283,4 @@ class ConfigureUSDStage:
         # Apply meters-per-unit metric system scale
         UsdGeom.SetStageMetersPerUnit(stage, meters_per_unit)
 
-        new_usda_text = stage.GetRootLayer().ExportToString()
-        return ({"usd_info": usd_path, "usda_text": new_usda_text},)
+        return ({"stage": stage},)

@@ -31,32 +31,28 @@ class PreviewUSD:
         }
 
     def preview_openusd(self, USD, frame=0):
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
 
-        if usd_path != "" and usda_text == "" and os.path.exists(usd_path):
-            try:
-                from pxr import Usd
-                stage = Usd.Stage.Open(usd_path)
-                if stage:
-                    stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(usd_path)}"
-                    usda_text = stage.GetRootLayer().ExportToString()
-                else:
-                    usda_text = "Failed to open USD Stage."
-            except ImportError:
-                usda_text = (
-                    "Error: 'pxr-usd-api' library is not installed.\n"
-                    "Please run 'pip install pxr-usd-api' in your ComfyUI environment."
-                )
-            except Exception as e:
-                usda_text = f"An error occurred while processing the USD file:\n{str(e)}"
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
+        
+        root_layer = stage.GetRootLayer()
+        
+        anchor_path = os.path.abspath(root_layer.realPath)
+
+        for ref in root_layer.GetExternalReferences():
+            if (os.path.isabs(ref)):
+                new_ref = ref.replace(os.path.dirname(anchor_path), "./")
+                root_layer.UpdateExternalReference(ref, new_ref)
+
+        usda_text = root_layer.ExportToString()
 
         usd_hash = ""
         if usda_text:
             usd_hash = register_in_memory_stage(usda_text)
 
         return {
-            "ui": {"usd_info": [usd_path], "usda_text": [usda_text], "usd_hash": [usd_hash], "frame": [frame]},
+            "ui": {"usd_info": [anchor_path], "usda_text": [usda_text], "usd_hash": [usd_hash], "frame": [frame]},
             "result": (USD,)
         }
 
@@ -139,8 +135,22 @@ class RenderUSD:
         depth_tensor = load_image_tensor(depth_file)
         normal_tensor = load_image_tensor(normal_file)
 
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
+
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
+
+
+        root_layer = stage.GetRootLayer()
+        
+        anchor_path = os.path.abspath(root_layer.realPath)
+
+        for ref in root_layer.GetExternalReferences():
+            if (os.path.isabs(ref)):
+                new_ref = ref.replace(os.path.dirname(anchor_path), "./")
+                root_layer.UpdateExternalReference(ref, new_ref)
+
+        usda_text = root_layer.ExportToString()
 
         usd_hash = ""
         if usda_text:
@@ -148,7 +158,7 @@ class RenderUSD:
 
         return {
             "ui": {
-                "usd_info": [usd_path],
+                "usd_info": [anchor_path],
                 "usda_text": [usda_text],
                 "usd_hash": [usd_hash],
                 "render_mode": [render_mode],

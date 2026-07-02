@@ -1,4 +1,7 @@
 import folder_paths
+from pxr import UsdGeom
+import os
+import uuid
 
 class SetUSDPrimDisplayColor:
     CATEGORY = "3d/USD/Prim"
@@ -23,96 +26,57 @@ class SetUSDPrimDisplayColor:
 
     def set_display_color(self, USD, prim_path, display_color="1.0,1.0,1.0", 
                           display_opacity=1.0, color_space="sRGB", apply_to_children=False):
-        from pxr import Usd, UsdGeom, Gf
-        import os
-        import uuid
 
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
+        stage = USD.get("stage", None)
 
-        # Use the original USD path if it exists
-        if usd_path and os.path.exists(usd_path):
-            stage = Usd.Stage.Open(usd_path)
-            is_temp = False
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
+
+        # Ensure leading slash for prim path
+        if not prim_path.startswith("/"):
+            prim_path = "/" + prim_path
+
+        # Get prims to process
+        prims_to_process = []
+        prim = stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            print(f"[SetUSDPrimDisplayColor] Prim '{prim_path}' not found, creating it")
+            prim = stage.DefinePrim(prim_path, "Xform")
+            prims_to_process.append(prim)
         else:
-            # If no valid file path, create a temp file from the usda_text
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            stage = Usd.Stage.Open(temp_in)
-            usd_path = temp_in
-            is_temp = True
-
-        try:
-            # Ensure leading slash for prim path
-            if not prim_path.startswith("/"):
-                prim_path = "/" + prim_path
-
-            # Get prims to process
-            prims_to_process = []
-            prim = stage.GetPrimAtPath(prim_path)
-            if not prim.IsValid():
-                print(f"[SetUSDPrimDisplayColor] Prim '{prim_path}' not found, creating it")
-                prim = stage.DefinePrim(prim_path, "Xform")
-                prims_to_process.append(prim)
-            else:
-                prims_to_process.append(prim)
+            prims_to_process.append(prim)
                 
-                # Add children if requested
-                if apply_to_children:
-                    for child in stage.Traverse():
-                        if str(child.GetPath()).startswith(prim_path) and child != prim:
-                            prims_to_process.append(child)
+            # Add children if requested
+            if apply_to_children:
+                for child in stage.Traverse():
+                    if str(child.GetPath()).startswith(prim_path) and child != prim:
+                        prims_to_process.append(child)
 
-            # Parse color
-            color = self.parse_color(display_color, color_space)
-            if color is None:
-                print(f"[SetUSDPrimDisplayColor] Invalid color format: {display_color}")
-                return (USD,)
-
-            # Apply display color and opacity to each prim
-            for target_prim in prims_to_process:
-                if target_prim.IsA(UsdGeom.Gprim):
-                    geom = UsdGeom.Gprim(target_prim)
-                    if geom:
-                        # Set display color
-                        try:
-                            geom.CreateDisplayColorAttr().Set([color])
-                        except Exception as e:
-                            print(f"[SetUSDPrimDisplayColor] Error setting display color on {target_prim.GetPath()}: {e}")
-                        
-                        # Set display opacity
-                        try:
-                            geom.CreateDisplayOpacityAttr().Set([display_opacity])
-                        except Exception as e:
-                            print(f"[SetUSDPrimDisplayColor] Error setting display opacity on {target_prim.GetPath()}: {e}")
-
-            # Save changes
-            stage.GetRootLayer().Save()
-
-            # Get the updated usda text
-            new_usda_text = stage.GetRootLayer().ExportToString()
-
-            return ({
-                "usd_info": usd_path,
-                "usda_text": new_usda_text
-            },)
-
-        except Exception as e:
-            print(f"[SetUSDPrimDisplayColor] Error: {e}")
-            import traceback
-            traceback.print_exc()
+        # Parse color
+        color = self.parse_color(display_color, color_space)
+        if color is None:
+            print(f"[SetUSDPrimDisplayColor] Invalid color format: {display_color}")
             return (USD,)
 
-        finally:
-            if is_temp and usd_path and os.path.exists(usd_path):
-                try:
-                    os.remove(usd_path)
-                except:
-                    pass
+        # Apply display color and opacity to each prim
+        for target_prim in prims_to_process:
+            if target_prim.IsA(UsdGeom.Gprim):
+                geom = UsdGeom.Gprim(target_prim)
+                if geom:
+                    # Set display color
+                    try:
+                        geom.CreateDisplayColorAttr().Set([color])
+                    except Exception as e:
+                        print(f"[SetUSDPrimDisplayColor] Error setting display color on {target_prim.GetPath()}: {e}")
+                        
+                    # Set display opacity
+                    try:
+                        geom.CreateDisplayOpacityAttr().Set([display_opacity])
+                    except Exception as e:
+                        print(f"[SetUSDPrimDisplayColor] Error setting display opacity on {target_prim.GetPath()}: {e}")
+
+        return ({"stage": stage},)
 
     def parse_color(self, color_string, color_space="sRGB"):
         """Parse color string and convert to Gf.Vec3f"""

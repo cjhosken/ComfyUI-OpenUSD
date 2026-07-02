@@ -15,11 +15,9 @@ server.PromptServer.instance.app._middlewares = existing.__class__(new_middlewar
 
 from .nodes.usd_io import LoadUSD, SaveUSD
 from .nodes.usd_view import PreviewUSD, RenderUSD
-from .nodes.usd_utils import (SplitUSD, CombineUSD, LayerBreakUSD)
 from .nodes.usd_convert import (
-    ConvertUSD, MeshToUSD, Model3DToUSD, USDtoModel3D,
+    USDtoText, TextToUSD
 )
-
 
 from .nodes.utils.shader.usd_material import ApplyUSDMaterial
 from .nodes.utils.prim.usd_prim_get import GetUSDPrimInfo, GetUSDAttribute
@@ -29,11 +27,11 @@ from .nodes.utils.prim.usd_prim_color import SetUSDPrimDisplayColor
 from .nodes.utils.prim.usd_prim_configure import ConfigureUSDPrim
 from .nodes.utils.prim.usd_composition import (
     AddUSDSublayer, AddUSDReferenceOrPayload,
-    AddUSDVariant, AddUSDInherit, AddUSDSpecializes
+    AddUSDVariant, AddUSDInherit, AddUSDSpecializes, LayerBreakUSD
 )
 from .nodes.utils.prim.usd_scene import (
     TransformUSDPrim, CreateUSDLight, CreateUSDCamera,
-    FlattenUSDStage, ConfigureUSDStage
+    ConfigureUSDStage
 )
 from .nodes.utils.prim.usd_datatypes import (
     USDDatatypeToJSON, JSONToUSDDatatype,
@@ -44,12 +42,8 @@ NODE_CLASS_MAPPINGS = {
     "LoadUSD": LoadUSD,
     "SaveUSD": SaveUSD,
     "PreviewUSD": PreviewUSD,
-    "SplitUSD": SplitUSD,
-    "CombineUSD": CombineUSD,
-    "ConvertUSD": ConvertUSD,
-    "MeshToUSD": MeshToUSD,
-    "Model3DToUSD": Model3DToUSD,
-    "USDtoModel3D": USDtoModel3D,
+    "USDtoText": USDtoText,
+    "TexttoUSD": TextToUSD,
     "ApplyUSDMaterial": ApplyUSDMaterial,
 
     "SetUSDPrimInfo": SetUSDPrimInfo,
@@ -71,7 +65,6 @@ NODE_CLASS_MAPPINGS = {
     "TransformUSDPrim": TransformUSDPrim,
     "CreateUSDLight": CreateUSDLight,
     "CreateUSDCamera": CreateUSDCamera,
-    "FlattenUSDStage": FlattenUSDStage,
     "ConfigureUSDStage": ConfigureUSDStage,
     "RenderUSD": RenderUSD,
     
@@ -86,12 +79,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadUSD": "Load USD",
     "SaveUSD": "Save USD",
     "PreviewUSD": "Preview USD",
-    "SplitUSD": "Split USD",
-    "CombineUSD": "Combine USD",
-    "ConvertUSD": "Convert USD",
-    "MeshToUSD": "Mesh to USD",
-    "Model3DToUSD": "Model3D to USD",
-    "USDtoModel3D": "USD to Model3D",
+    "USDtoText": "USD to Text",
+    "TexttoUSD": "Text to USD",
     "ApplyUSDMaterial": "USD Material",
 
     "SetUSDPrimInfo": "Set USD Prim Info",
@@ -113,7 +102,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "TransformUSDPrim": "Transform USD Prim",
     "CreateUSDLight": "Create USD Light",
     "CreateUSDCamera": "Create USD Camera",
-    "FlattenUSDStage": "Flatten USD Stage",
     "ConfigureUSDStage": "Configure USD Stage",
     "RenderUSD": "Render USD",
     

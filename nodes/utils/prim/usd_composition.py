@@ -2,6 +2,7 @@ import os
 import uuid
 import folder_paths
 import fnmatch
+from pxr import Usd, Sdf
 
 class AddUSDSublayer:
     CATEGORY = "3d/USD/Composition"
@@ -20,51 +21,28 @@ class AddUSDSublayer:
         }
 
     def add_sublayer(self, USD, sublayer_path, position="prepend"):
-        from pxr import Usd
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"sublayer_{uuid.uuid4().hex}.usda")
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
-
-        try:
-            stage = Usd.Stage.Open(usd_path)
-            root_layer = stage.GetRootLayer()
+        root_layer = stage.GetRootLayer()
             
-            abs_sub_path = os.path.abspath(sublayer_path)
+        abs_sub_path = os.path.abspath(sublayer_path)
             
-            # Remove duplicate reference if it exists
-            sub_paths = list(root_layer.subLayerPaths)
-            if abs_sub_path in sub_paths:
-                sub_paths.remove(abs_sub_path)
+        # Remove duplicate reference if it exists
+        sub_paths = list(root_layer.subLayerPaths)
+        if abs_sub_path in sub_paths:
+            sub_paths.remove(abs_sub_path)
             
-            if position == "prepend":
-                sub_paths.insert(0, abs_sub_path)
-            else:
-                sub_paths.append(abs_sub_path)
+        if position == "prepend":
+            sub_paths.insert(0, abs_sub_path)
+        else:
+            sub_paths.append(abs_sub_path)
                 
-            root_layer.subLayerPaths = sub_paths
+        root_layer.subLayerPaths = sub_paths
             
-            root_layer.comment = f"usd_info: {os.path.abspath(out_path)}"
-            root_layer.Export(out_path)
-            new_usda_text = root_layer.ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
-
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
+        return ({"stage": stage},)
 
 class AddUSDReferenceOrPayload:
     CATEGORY = "3d/USD/Composition"
@@ -86,64 +64,41 @@ class AddUSDReferenceOrPayload:
         }
 
     def add_reference_or_payload(self, USD, prim_path, arc_type, file_path, target_prim_mode, referenced_prim_path=""):
-        from pxr import Usd, Sdf
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"{arc_type}_{uuid.uuid4().hex}.usda")
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
+        if not prim_path.startswith("/"):
+            prim_path = "/" + prim_path
 
-        try:
-            if not prim_path.startswith("/"):
-                prim_path = "/" + prim_path
-
-            stage = Usd.Stage.Open(usd_path)
-            
-            matched_prims = []
-            if "*" in prim_path or "?" in prim_path:
-                for p in stage.Traverse():
-                    if fnmatch.fnmatch(str(p.GetPath()), prim_path):
-                        matched_prims.append(p)
+        matched_prims = []
+        if "*" in prim_path or "?" in prim_path:
+            for p in stage.Traverse():
+                if fnmatch.fnmatch(str(p.GetPath()), prim_path):
+                    matched_prims.append(p)
+        else:
+            prim = stage.GetPrimAtPath(prim_path)
+            if prim.IsValid():
+                matched_prims.append(prim)
             else:
-                prim = stage.GetPrimAtPath(prim_path)
-                if prim.IsValid():
-                    matched_prims.append(prim)
-                else:
-                    prim = stage.DefinePrim(prim_path, "Xform")
-                    matched_prims.append(prim)
+                prim = stage.DefinePrim(prim_path, "Xform")
+                matched_prims.append(prim)
 
-            ref_prim_path_obj = Sdf.Path.emptyPath
-            if target_prim_mode == "specify prim" and referenced_prim_path.strip():
-                ref_prim_path_obj = Sdf.Path(referenced_prim_path.strip())
+        ref_prim_path_obj = Sdf.Path.emptyPath
+        if target_prim_mode == "specify prim" and referenced_prim_path.strip():
+            ref_prim_path_obj = Sdf.Path(referenced_prim_path.strip())
                 
-            ref_file = os.path.abspath(file_path) if file_path.strip() else ""
+        ref_file = os.path.abspath(file_path) if file_path.strip() else ""
 
-            for prim in matched_prims:
-                if arc_type == "reference":
-                    prim.GetReferences().AddReference(assetPath=ref_file, primPath=ref_prim_path_obj)
-                else:
-                    prim.GetPayloads().AddPayload(assetPath=ref_file, primPath=ref_prim_path_obj)
+        for prim in matched_prims:
+            if arc_type == "reference":
+                prim.GetReferences().AddReference(assetPath=ref_file, primPath=ref_prim_path_obj)
+            else:
+                prim.GetPayloads().AddPayload(assetPath=ref_file, primPath=ref_prim_path_obj)
 
-            stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_path)}"
-            stage.GetRootLayer().Export(out_path)
-            new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
+        return ({"stage": stage},)
 
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
 
 class AddUSDVariant:
     CATEGORY = "3d/USD/Composition"
@@ -164,60 +119,40 @@ class AddUSDVariant:
         }
 
     def add_variant(self, USD, prim_path, variant_set_name, variant_name, set_selection=True):
-        from pxr import Usd
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"variant_{uuid.uuid4().hex}.usda")
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
 
-        try:
-            if not prim_path.startswith("/"):
-                prim_path = "/" + prim_path
+        if not prim_path.startswith("/"):
+            prim_path = "/" + prim_path
 
-            stage = Usd.Stage.Open(usd_path)
             
-            matched_prims = []
-            if "*" in prim_path or "?" in prim_path:
-                for p in stage.Traverse():
-                    if fnmatch.fnmatch(str(p.GetPath()), prim_path):
+        matched_prims = []
+        if "*" in prim_path or "?" in prim_path:
+            for p in stage.Traverse():
+                if fnmatch.fnmatch(str(p.GetPath()), prim_path):
                         matched_prims.append(p)
+        else:
+            prim = stage.GetPrimAtPath(prim_path)
+            if prim.IsValid():
+                matched_prims.append(prim)
             else:
-                prim = stage.GetPrimAtPath(prim_path)
-                if prim.IsValid():
-                    matched_prims.append(prim)
-                else:
-                    prim = stage.DefinePrim(prim_path, "Xform")
-                    matched_prims.append(prim)
+                prim = stage.DefinePrim(prim_path, "Xform")
+                matched_prims.append(prim)
 
-            for prim in matched_prims:
-                vsets = prim.GetVariantSets()
-                vset = vsets.AddVariantSet(variant_set_name)
-                vset.AddVariant(variant_name)
+        for prim in matched_prims:
+            vsets = prim.GetVariantSets()
+            vset = vsets.AddVariantSet(variant_set_name)
+            vset.AddVariant(variant_name)
                 
-                if set_selection:
-                    vset.SetVariantSelection(variant_name)
+            if set_selection:
+                vset.SetVariantSelection(variant_name)
 
-            stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_path)}"
-            stage.GetRootLayer().Export(out_path)
-            new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
 
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
+        return ({"stage":stage},)
+
 
 class AddUSDInherit:
     CATEGORY = "3d/USD/Composition"
@@ -236,57 +171,36 @@ class AddUSDInherit:
         }
 
     def add_inherit(self, USD, prim_path, inherit_prim_path):
-        from pxr import Usd, Sdf
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"inherit_{uuid.uuid4().hex}.usda")
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
 
-        try:
-            if not prim_path.startswith("/"):
-                prim_path = "/" + prim_path
-            if not inherit_prim_path.startswith("/"):
-                inherit_prim_path = "/" + inherit_prim_path
+        if not prim_path.startswith("/"):
+            prim_path = "/" + prim_path
+        if not inherit_prim_path.startswith("/"):
+            inherit_prim_path = "/" + inherit_prim_path
 
-            stage = Usd.Stage.Open(usd_path)
             
-            matched_prims = []
-            if "*" in prim_path or "?" in prim_path:
-                for p in stage.Traverse():
-                    if fnmatch.fnmatch(str(p.GetPath()), prim_path):
+        matched_prims = []
+        if "*" in prim_path or "?" in prim_path:
+            for p in stage.Traverse():
+                if fnmatch.fnmatch(str(p.GetPath()), prim_path):
                         matched_prims.append(p)
+        else:
+            prim = stage.GetPrimAtPath(prim_path)
+            if prim.IsValid():
+                matched_prims.append(prim)
             else:
-                prim = stage.GetPrimAtPath(prim_path)
-                if prim.IsValid():
-                    matched_prims.append(prim)
-                else:
-                    prim = stage.DefinePrim(prim_path, "Xform")
-                    matched_prims.append(prim)
+                prim = stage.DefinePrim(prim_path, "Xform")
+                matched_prims.append(prim)
 
-            for prim in matched_prims:
-                prim.GetInherits().AddInherit(Sdf.Path(inherit_prim_path))
+        for prim in matched_prims:
+            prim.GetInherits().AddInherit(Sdf.Path(inherit_prim_path))
 
-            stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_path)}"
-            stage.GetRootLayer().Export(out_path)
-            new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
+        return ({"stage": stage},)
 
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
 
 class AddUSDSpecializes:
     CATEGORY = "3d/USD/Composition"
@@ -305,54 +219,68 @@ class AddUSDSpecializes:
         }
 
     def add_specialize(self, USD, prim_path, specializes_prim_path):
-        from pxr import Usd, Sdf
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        stage = USD.get("stage", None)
 
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
+
+        if not prim_path.startswith("/"):
+            prim_path = "/" + prim_path
+        if not specializes_prim_path.startswith("/"):
+            specializes_prim_path = "/" + specializes_prim_path
+
+            
+        matched_prims = []
+        if "*" in prim_path or "?" in prim_path:
+            for p in stage.Traverse():
+                if fnmatch.fnmatch(str(p.GetPath()), prim_path):
+                    matched_prims.append(p)
+        else:
+            prim = stage.GetPrimAtPath(prim_path)
+            if prim.IsValid():
+                matched_prims.append(prim)
+            else:
+                prim = stage.DefinePrim(prim_path, "Xform")
+                matched_prims.append(prim)
+
+        for prim in matched_prims:
+            prim.GetSpecializes().AddSpecialize(Sdf.Path(specializes_prim_path))
+
+
+        return ({"stage": stage},)
+
+
+class LayerBreakUSD:
+    CATEGORY = "3d/USD/Composition"
+    FUNCTION = "break_layer"
+    RETURN_TYPES = ("USD",)
+    RETURN_NAMES = ("USD",)
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "USD": ("USD",),
+            }
+        }
+
+    def break_layer(self, USD):
+        
+        stage = USD.get("stage", None)
+        
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
+        
         temp_dir = folder_paths.get_temp_directory()
         os.makedirs(temp_dir, exist_ok=True)
-        out_path = os.path.join(temp_dir, f"specialize_{uuid.uuid4().hex}.usda")
+        
+        base_layer_path = os.path.join(temp_dir, f"layer_break_base_{uuid.uuid4().hex}.usda")
+        stage.GetRootLayer().Export(base_layer_path)
+                
+        # Create a new empty active stage
+        new_stage = Usd.Stage.CreateInMemory()
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
-
-        try:
-            if not prim_path.startswith("/"):
-                prim_path = "/" + prim_path
-            if not specializes_prim_path.startswith("/"):
-                specializes_prim_path = "/" + specializes_prim_path
-
-            stage = Usd.Stage.Open(usd_path)
-            
-            matched_prims = []
-            if "*" in prim_path or "?" in prim_path:
-                for p in stage.Traverse():
-                    if fnmatch.fnmatch(str(p.GetPath()), prim_path):
-                        matched_prims.append(p)
-            else:
-                prim = stage.GetPrimAtPath(prim_path)
-                if prim.IsValid():
-                    matched_prims.append(prim)
-                else:
-                    prim = stage.DefinePrim(prim_path, "Xform")
-                    matched_prims.append(prim)
-
-            for prim in matched_prims:
-                prim.GetSpecializes().AddSpecialize(Sdf.Path(specializes_prim_path))
-
-            stage.GetRootLayer().comment = f"usd_info: {os.path.abspath(out_path)}"
-            stage.GetRootLayer().Export(out_path)
-            new_usda_text = stage.GetRootLayer().ExportToString()
-            return ({"usd_info": out_path, "usda_text": new_usda_text},)
-
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
+        absolute_base_path = os.path.abspath(base_layer_path)
+        new_stage.GetRootLayer().subLayerPaths.append(absolute_base_path)
+        
+        return ({"stage": new_stage},)

@@ -1,10 +1,15 @@
 import folder_paths
+from pxr import Usd, Sdf
+import json
+import os
+import fnmatch
+import uuid
 
 class GetUSDPrimInfo:
     CATEGORY = "3d/USD/Prim"
     FUNCTION = "get_info"
-    RETURN_TYPES = ("USD", "STRING",)
-    RETURN_NAMES = ("USD", "prim_info_json",)
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("prim_json",)
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -22,69 +27,47 @@ class GetUSDPrimInfo:
 
     def get_info(self, USD, prim_path, include_children=False, include_properties=True, 
                  include_primvars=True, include_relationships=False, include_metadata=False):
-        from pxr import Usd, UsdGeom, Sdf, Tf
-        import json
-        import os
-        import fnmatch
-        import uuid
-        
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
-        
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
-        
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
 
-        try:
-            stage = Usd.Stage.Open(usd_path)
-            
-            # Ensure leading slash for prim path
-            if not prim_path.startswith("/"):
+        stage = USD.get("stage", None)
+
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
+        
+        # Ensure leading slash for prim path
+        if not prim_path.startswith("/"):
                 prim_path = "/" + prim_path
             
-            # Handle wildcards
-            prims_to_process = []
-            if "*" in prim_path or "?" in prim_path:
-                for p in stage.Traverse():
-                    if fnmatch.fnmatch(str(p.GetPath()), prim_path):
-                        prims_to_process.append(p)
+        # Handle wildcards
+        prims_to_process = []
+        if "*" in prim_path or "?" in prim_path:
+            for p in stage.Traverse():
+                if fnmatch.fnmatch(str(p.GetPath()), prim_path):
+                    prims_to_process.append(p)
+        else:
+            prim = stage.GetPrimAtPath(prim_path)
+            if prim.IsValid():
+                prims_to_process.append(prim)
             else:
-                prim = stage.GetPrimAtPath(prim_path)
-                if prim.IsValid():
-                    prims_to_process.append(prim)
-                else:
-                    raise ValueError(f"Prim '{prim_path}' not found in USD stage")
+                raise ValueError(f"Prim '{prim_path}' not found in USD stage")
             
-            result = {}
+        result = {}
             
-            for prim in prims_to_process:
-                prim_info = self.extract_prim_info(
-                    prim, 
-                    include_children=include_children,
-                    include_properties=include_properties,
-                    include_primvars=include_primvars,
-                    include_relationships=include_relationships,
-                    include_metadata=include_metadata
-                )
-                result[str(prim.GetPath())] = prim_info
+        for prim in prims_to_process:
+            prim_info = self.extract_prim_info(
+                prim, 
+                include_children=include_children,
+                include_properties=include_properties,
+                include_primvars=include_primvars,
+                include_relationships=include_relationships,
+                include_metadata=include_metadata
+            )
+            result[str(prim.GetPath())] = prim_info
             
-            # Convert to JSON
-            json_str = json.dumps(result, indent=2, default=self.json_serializer)
+        # Convert to JSON
+        json_str = json.dumps(result, indent=2, default=self.json_serializer)
             
-            return (USD, json_str,)
+        return (json_str,)
             
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
 
     def extract_prim_info(self, prim, include_children=False, include_properties=True,
                          include_primvars=True, include_relationships=False, include_metadata=False):
@@ -494,65 +477,44 @@ class GetUSDAttribute:
         return str(val)
 
     def get_attribute(self, USD, prim_path, attribute_name, attribute_type):
-        from pxr import Usd, Sdf
-        import os
-        import uuid
-        import folder_paths
+        stage = USD.get("stage", None)
 
-        usd_path = USD.get("usd_info", "")
-        usda_text = USD.get("usda_text", "")
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
-        temp_dir = folder_paths.get_temp_directory()
-        os.makedirs(temp_dir, exist_ok=True)
 
-        temp_in = None
-        if not usd_path or not os.path.exists(usd_path):
-            temp_in = os.path.join(temp_dir, f"temp_in_{uuid.uuid4().hex}.usda")
-            with open(temp_in, "w") as f:
-                f.write(usda_text)
-            usd_path = temp_in
+        if not prim_path.startswith("/"):
+            prim_path = "/" + prim_path
 
-        try:
-            if not prim_path.startswith("/"):
-                prim_path = "/" + prim_path
-
-            stage = Usd.Stage.Open(usd_path)
-            prim = stage.GetPrimAtPath(prim_path)
+        prim = stage.GetPrimAtPath(prim_path)
             
-            if not prim.IsValid():
-                print(f"[GetUSDAttribute] Warning: Prim '{prim_path}' not found.")
-                return (None,)
+        if not prim.IsValid():
+            print(f"[GetUSDAttribute] Warning: Prim '{prim_path}' not found.")
+            return (None,)
 
-            attr = prim.GetAttribute(attribute_name)
-            if not attr.IsValid() or not attr.HasValue():
-                if not attribute_name.startswith("primvars:"):
-                    attr = prim.GetAttribute(f"primvars:{attribute_name}")
+        attr = prim.GetAttribute(attribute_name)
+        if not attr.IsValid() or not attr.HasValue():
+            if not attribute_name.startswith("primvars:"):
+                attr = prim.GetAttribute(f"primvars:{attribute_name}")
             
-            if not attr.IsValid() or not attr.HasValue():
-                print(f"[GetUSDAttribute] Warning: Attribute '{attribute_name}' not found on '{prim_path}'.")
-                return (None,)
+        if not attr.IsValid() or not attr.HasValue():
+            print(f"[GetUSDAttribute] Warning: Attribute '{attribute_name}' not found on '{prim_path}'.")
+            return (None,)
 
-            val = attr.Get()
-            if val is None:
-                return (None,)
+        val = attr.Get()
+        if val is None:
+            return (None,)
 
-            # Resolve type schema name dynamically
-            alias_map = {
-                "Vec3f": "float3",
-                "Vec3d": "double3",
-            }
-            resolved_type_str = alias_map.get(attribute_type, attribute_type)
-            type_name = Sdf.GetValueTypeByName(resolved_type_str)
-            if not type_name:
-                type_name = Sdf.ValueTypeNames.String
+        # Resolve type schema name dynamically
+        alias_map = {
+            "Vec3f": "float3",
+            "Vec3d": "double3",
+        }
+        resolved_type_str = alias_map.get(attribute_type, attribute_type)
+        type_name = Sdf.GetValueTypeByName(resolved_type_str)
+        if not type_name:
+            type_name = Sdf.ValueTypeNames.String
 
-            # Convert to Python types
-            python_val = self.cast_usd_value_to_python(val, type_name)
-            return (python_val,)
-
-        finally:
-            if temp_in and os.path.exists(temp_in):
-                try:
-                    os.remove(temp_in)
-                except:
-                    pass
+        # Convert to Python types
+        python_val = self.cast_usd_value_to_python(val, type_name)
+        return (python_val,)
