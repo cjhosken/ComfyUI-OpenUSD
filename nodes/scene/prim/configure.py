@@ -1,7 +1,7 @@
 from pxr import UsdGeom
 
 class ConfigureUSDPrim:
-    CATEGORY = "3d/USD/Prim"
+    CATEGORY = "3d/usd/prim"
     FUNCTION = "configure_prim"
     RETURN_TYPES = ("USD",)
     RETURN_NAMES = ("USD",)
@@ -27,7 +27,6 @@ class ConfigureUSDPrim:
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
-
 
         # Ensure leading slash for prim path
         if not prim_path.startswith("/"):

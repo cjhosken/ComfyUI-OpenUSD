@@ -13,103 +13,26 @@ existing = server.PromptServer.instance.app._middlewares
 new_middlewares = [allow_wasm_headers] + list(existing)
 server.PromptServer.instance.app._middlewares = existing.__class__(new_middlewares)
 
-from .nodes.usd_io import LoadUSD, SaveUSD
-from .nodes.usd_view import PreviewUSD, RenderUSD
-from .nodes.usd_convert import (
-    USDtoText, TextToUSD
-)
-
-from .nodes.utils.shader.usd_material import ApplyUSDMaterial
-from .nodes.utils.prim.usd_prim_get import GetUSDPrimInfo, GetUSDAttribute
-from .nodes.utils.prim.usd_prim_set import SetUSDPrimInfo, SetUSDAttribute
-
-from .nodes.utils.prim.usd_prim_color import SetUSDPrimDisplayColor
-from .nodes.utils.prim.usd_prim_configure import ConfigureUSDPrim
-from .nodes.utils.prim.usd_composition import (
-    AddUSDSublayer, AddUSDReferenceOrPayload,
-    AddUSDVariant, AddUSDInherit, AddUSDSpecializes, LayerBreakUSD
-)
-from .nodes.utils.prim.usd_scene import (
-    TransformUSDPrim, CreateUSDLight, CreateUSDCamera,
-    ConfigureUSDStage
-)
-from .nodes.utils.prim.usd_datatypes import (
-    USDDatatypeToJSON, JSONToUSDDatatype,
-    CreateUSDVec3, CreateUSDVec2, CreateUSDMatrix
-)
+from .nodes import types as usd_types
+from .nodes import io as usd_io
+from .nodes import scene as usd_scene
+from .nodes import convert as usd_convert
+from .nodes import composition as usd_composition
 
 NODE_CLASS_MAPPINGS = {
-    "LoadUSD": LoadUSD,
-    "SaveUSD": SaveUSD,
-    "PreviewUSD": PreviewUSD,
-    "USDtoText": USDtoText,
-    "TexttoUSD": TextToUSD,
-    "ApplyUSDMaterial": ApplyUSDMaterial,
-
-    "SetUSDPrimInfo": SetUSDPrimInfo,
-    "GetUSDPrimInfo": GetUSDPrimInfo,
-
-    "ConfigureUSDPrim": ConfigureUSDPrim,
-    "SetUSDPrimDisplayColor": SetUSDPrimDisplayColor,
-    
-    "LayerBreakUSD": LayerBreakUSD,
-    "SetUSDAttribute": SetUSDAttribute,
-    "GetUSDAttribute": GetUSDAttribute,
-    
-    "AddUSDSublayer": AddUSDSublayer,
-    "AddUSDReferenceOrPayload": AddUSDReferenceOrPayload,
-    "AddUSDVariant": AddUSDVariant,
-    "AddUSDInherit": AddUSDInherit,
-    "AddUSDSpecializes": AddUSDSpecializes,
-    
-    "TransformUSDPrim": TransformUSDPrim,
-    "CreateUSDLight": CreateUSDLight,
-    "CreateUSDCamera": CreateUSDCamera,
-    "ConfigureUSDStage": ConfigureUSDStage,
-    "RenderUSD": RenderUSD,
-    
-    "USDDatatypeToJSON": USDDatatypeToJSON,
-    "JSONToUSDDatatype": JSONToUSDDatatype,
-    "CreateUSDVec3": CreateUSDVec3,
-    "CreateUSDVec2": CreateUSDVec2,
-    "CreateUSDMatrix": CreateUSDMatrix
+    **usd_io.NODE_CLASS_MAPPINGS, 
+    **usd_types.NODE_CLASS_MAPPINGS, 
+    **usd_scene.NODE_CLASS_MAPPINGS,
+    **usd_convert.NODE_CLASS_MAPPINGS,
+    **usd_composition.NODE_CLASS_MAPPINGS
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadUSD": "Load USD",
-    "SaveUSD": "Save USD",
-    "PreviewUSD": "Preview USD",
-    "USDtoText": "USD to Text",
-    "TexttoUSD": "Text to USD",
-    "ApplyUSDMaterial": "USD Material",
-
-    "SetUSDPrimInfo": "Set USD Prim Info",
-    "GetUSDPrimInfo": "Get USD Prim Info",
-
-    "ConfigureUSDPrim": "Configure USD Prim",
-    "SetUSDPrimDisplayColor": "Set USD Prim Display Color",
-    
-    "LayerBreakUSD": "Layer Break USD",
-    "SetUSDAttribute": "Set USD Attribute",
-    "GetUSDAttribute": "Get USD Attribute",
-    
-    "AddUSDSublayer": "Add USD Sublayer",
-    "AddUSDReferenceOrPayload": "Add USD Reference / Payload",
-    "AddUSDVariant": "Add USD Variant",
-    "AddUSDInherit": "Add USD Inherit",
-    "AddUSDSpecializes": "Add USD Specializes",
-    
-    "TransformUSDPrim": "Transform USD Prim",
-    "CreateUSDLight": "Create USD Light",
-    "CreateUSDCamera": "Create USD Camera",
-    "ConfigureUSDStage": "Configure USD Stage",
-    "RenderUSD": "Render USD",
-    
-    "USDDatatypeToJSON": "USD Datatype to JSON",
-    "JSONToUSDDatatype": "JSON to USD Datatype",
-    "CreateUSDVec3": "Create USD Vec3",
-    "CreateUSDVec2": "Create USD Vec2",
-    "CreateUSDMatrix": "Create USD Matrix"
+    **usd_io.NODE_DISPLAY_NAME_MAPPINGS, 
+    **usd_types.NODE_DISPLAY_NAME_MAPPINGS, 
+    **usd_scene.NODE_DISPLAY_NAME_MAPPINGS,
+    **usd_convert.NODE_DISPLAY_NAME_MAPPINGS,
+    **usd_composition.NODE_DISPLAY_NAME_MAPPINGS
 }
 
 WEB_DIRECTORY = "web"
@@ -153,7 +76,7 @@ async def serve_usd_file(request):
     # Check if there is an in-memory stage update registered for this hash
     if usd_hash:
         try:
-            from nodes.usd_view import IN_MEMORY_STAGES
+            from nodes.view.viewer import IN_MEMORY_STAGES
             if usd_hash in IN_MEMORY_STAGES:
                 from pxr import Usd
                 usda_text = IN_MEMORY_STAGES[usd_hash]

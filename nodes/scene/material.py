@@ -1,10 +1,10 @@
 import os
 import folder_paths
 from pxr import UsdShade, Sdf, Gf
-import fnmatch
+from ..utils import find_prims, hex_to_rgba
 
 class ApplyUSDMaterial:
-    CATEGORY = "3d/USD/Shader"
+    CATEGORY = "3d/usd/scene"
     FUNCTION = "apply_material"
     RETURN_TYPES = ("USD",)
     RETURN_NAMES = ("USD",)
@@ -31,7 +31,7 @@ class ApplyUSDMaterial:
         }
 
     def apply_material(self, USD, material_prim_path, mesh_prim_path, diffuse_color, roughness, metallic, emissive_color, opacity, ior, diffuse_texture="", roughness_texture="", metallic_texture=""):
-        stage = USD.get("stage", None)
+        stage = USD
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -55,23 +55,8 @@ class ApplyUSDMaterial:
         tex_roughness_path = resolve_tex_path(roughness_texture)
         tex_metallic_path  = resolve_tex_path(metallic_texture)
 
-        def hex_to_rgb(hex_str):
-            if not hex_str:
-                return 0.8, 0.8, 0.8
-            hex_str = hex_str.lstrip('#')
-            if len(hex_str) == 6:
-                try:
-                    r = int(hex_str[0:2], 16) / 255.0
-                    g = int(hex_str[2:4], 16) / 255.0
-                    b = int(hex_str[4:6], 16) / 255.0
-                    return r, g, b
-                except:
-                    pass
-            return 0.8, 0.8, 0.8
-
-        diff_r, diff_g, diff_b = hex_to_rgb(diffuse_color)
-        emis_r, emis_g, emis_b = hex_to_rgb(emissive_color)
-
+        diff_r, diff_g, diff_b, diff_a = hex_to_rgba(diffuse_color)
+        emis_r, emis_g, emis_b, emis_a = hex_to_rgba(emissive_color)
 
         # Normalize material path
         if not material_prim_path.startswith("/"):
@@ -123,25 +108,9 @@ class ApplyUSDMaterial:
         shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(opacity)
         shader.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(ior)
             
-        # Bind material to all normalized comma-separated targets (with wildcard matching)
-        targets = [p.strip() for p in mesh_prim_path.split(",") if p.strip()]
-        matched_prims = []
-        for target_path in targets:
-            if not target_path.startswith("/"):
-                target_path = "/" + target_path
-                    
-            if "*" in target_path or "?" in target_path:
-                for p in stage.Traverse():
-                    if fnmatch.fnmatch(str(p.GetPath()), target_path):
-                        matched_prims.append(p)
-            else:
-                mesh_prim = stage.GetPrimAtPath(target_path)
-                if mesh_prim.IsValid():
-                    matched_prims.append(mesh_prim)
-                else:
-                    print(f"[ApplyUSDMaterial] Warning: mesh target path '{target_path}' not found, skipping binding.")
-            
+        matched_prims = find_prims(stage, mesh_prim_path)
+
         for prim in matched_prims:
             UsdShade.MaterialBindingAPI(prim).Bind(material)
 
-        return ({"stage": stage},)
+        return ({"stage":stage},)

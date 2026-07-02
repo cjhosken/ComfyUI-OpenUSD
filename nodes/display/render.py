@@ -1,63 +1,13 @@
+import folder_paths
+from PIL import Image, ImageOps
+import torch
+import numpy as np
 import os
-import hashlib
 
-IN_MEMORY_STAGES = {}
-
-def register_in_memory_stage(usda_text):
-    if not usda_text:
-        return ""
-    h = hashlib.sha256(usda_text.encode('utf-8')).hexdigest()
-    IN_MEMORY_STAGES[h] = usda_text
-    return h
-
-class PreviewUSD:
-    CATEGORY = "3d/USD/View"
-    FUNCTION = "preview_openusd"
-
-    RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
-
-    OUTPUT_NODE = True
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "USD": ("USD",),
-            },
-            "optional": {
-                "frame": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1}),
-            }
-        }
-
-    def preview_openusd(self, USD, frame=0):
-        stage = USD.get("stage", None)
-
-        if stage is None:
-            raise RuntimeError("Invalid USD stage")
-        
-        root_layer = stage.GetRootLayer()
-        
-        anchor_path = os.path.abspath(root_layer.realPath)
-
-        for ref in root_layer.GetExternalReferences():
-            if (os.path.isabs(ref)):
-                new_ref = ref.replace(os.path.dirname(anchor_path), "./")
-                root_layer.UpdateExternalReference(ref, new_ref)
-
-        usda_text = root_layer.ExportToString()
-
-        usd_hash = ""
-        if usda_text:
-            usd_hash = register_in_memory_stage(usda_text)
-
-        return {
-            "ui": {"usd_info": [anchor_path], "usda_text": [usda_text], "usd_hash": [usd_hash], "frame": [frame]},
-            "result": (USD,)
-        }
+from ..utils import register_in_memory_stage
 
 class RenderUSD:
-    CATEGORY = "3d/USD/View"
+    CATEGORY = "3d/usd/view"
     FUNCTION = "render_usd"
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE",)
     RETURN_NAMES = ("beauty", "depth", "normal",)
@@ -72,22 +22,13 @@ class RenderUSD:
                 "start_frame": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1}),
                 "end_frame": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1}),
                 "width": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 64}),
-                "height": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 64}),
-                "beauty_file": ("STRING", {"default": ""}),
-                "depth_file": ("STRING", {"default": ""}),
-                "normal_file": ("STRING", {"default": ""}),
+                "height": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 64})
             }
         }
 
-    def render_usd(self, USD, render_mode, frame, start_frame, end_frame, width, height, beauty_file, depth_file, normal_file):
-        import folder_paths
-        from PIL import Image, ImageOps
-        import torch
-        import numpy as np
-        
+    def render_usd(self, USD, render_mode, frame, start_frame, end_frame, width, height):        
         def load_image_tensor(filename_list_str):
             if not filename_list_str:
-                # Return empty black tensor if no image uploaded yet
                 return torch.zeros((1, height, width, 3), dtype=torch.float32)
             
             filenames = [f.strip() for f in filename_list_str.split(",") if f.strip()]
@@ -130,10 +71,6 @@ class RenderUSD:
             if not tensors:
                 return torch.zeros((1, height, width, 3), dtype=torch.float32)
             return torch.stack(tensors)
-
-        beauty_tensor = load_image_tensor(beauty_file)
-        depth_tensor = load_image_tensor(depth_file)
-        normal_tensor = load_image_tensor(normal_file)
 
         stage = USD.get("stage", None)
 

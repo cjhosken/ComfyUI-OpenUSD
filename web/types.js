@@ -2,23 +2,7 @@ import { app } from "../../../scripts/app.js";
 
 import { createVec2Widget } from "./widgets/vec2.js";
 import { createVec3Widget } from "./widgets/vec3.js";
-import { createColorWidget } from "./widgets/color.js";
-
-app.registerExtension({
-    name: "usd.socket",
-
-    async setup() {
-        const color = "#2ECC71";
-
-        LiteGraph.NODE_SLOT_COLORS ??= {};
-        LiteGraph.slot_types_default_in ??= {};
-        LiteGraph.slot_types_default_out ??= {};
-
-        LiteGraph.NODE_SLOT_COLORS["USD"] = color;
-        LiteGraph.slot_types_default_in["USD"] = color;
-        LiteGraph.slot_types_default_out["USD"] = color;
-    },
-});
+import { createVec3Widget } from "./widgets/vec4.js";
 
 app.registerExtension({
     name: "usd.datatypes",
@@ -45,11 +29,11 @@ app.registerExtension({
             };
 
             for (const input of this.inputs || []) {
-                if (input.type === "VEC2" || input.type === "VEC3" || input.type === "COLOR") {
+                if (input.type === "VEC2" || input.type === "VEC3" || input.type === "VEC4") {
                     const defVal = getDefVal(input.name);
                     const w = input.type === "VEC2" ? createVec2Widget(this, input.name, defVal) :
                               input.type === "VEC3" ? createVec3Widget(this, input.name, defVal) :
-                                                      createColorWidget(this, input.name, defVal);
+                                                      createVec4Widget(this, input.name, defVal);
 
                     // Create and prepend a label
                     const label = document.createElement("span");
@@ -68,7 +52,7 @@ app.registerExtension({
                     w.element.insertBefore(label, w.element.firstChild);
                     w.element.style.marginBottom = "4px";
 
-                    this.addDOMWidget(input.name, "HTML", w.element, {
+                    const domWidget = this.addDOMWidget(input.name, "HTML", w.element, {
                         getValue: w.get,
                         setValue: w.set,
                         serializeValue: w.serializeValue
