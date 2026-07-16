@@ -1,4 +1,4 @@
-import { createPxr } from "../pxr/openusd_pxr.js";
+import { PXR } from "../pxr/openusd_pxr.js";
 import * as THREE from "https://esm.sh/three";
 import { FileLoader, Loader } from "https://esm.sh/three";
 import { autoResolveAssetFiles, autoResolveTextureFiles, createTextureResolverFromEntries, extractPackageEntries, findPackageRootLayer } from "../utils/openusd_utils.js";
@@ -267,20 +267,26 @@ function triangulateMesh(pxr, stage, prim, time, boundMaterial, materialTextureC
 		dispose$1(mesh);
 	}
 }
-function triangulateSphere(pxr, prim, time) {
-	const sphere = new pxr.UsdGeom.Sphere(prim);
-	try {
-		return sphere.ComputeTriangulatedGeometry(time);
-	} finally {
-		dispose$1(sphere);
-	}
+const analyticGprimTypeNames = [
+	"Cube",
+	"Sphere",
+	"Cylinder",
+	"Cone",
+	"Capsule",
+	"Plane",
+	"Cylinder_1",
+	"Capsule_1"
+];
+function isAnalyticGprimTypeName(typeName) {
+	return analyticGprimTypeNames.includes(typeName);
 }
-function triangulateCylinder(pxr, prim, time) {
-	const cylinder = new pxr.UsdGeom.Cylinder(prim);
+function triangulateAnalyticGprim(pxr, prim, time, typeName) {
+	const Schema = pxr.UsdGeom[typeName];
+	const schema = new Schema(prim);
 	try {
-		return cylinder.ComputeTriangulatedGeometry(time);
+		return schema.ComputeTriangulatedGeometry(time);
 	} finally {
-		dispose$1(cylinder);
+		dispose$1(schema);
 	}
 }
 function geomSubsetMaterialFallback(pxr, prim) {
@@ -292,13 +298,13 @@ function getModelElements(pxr, stage, prims, time) {
 	const materialTextureCache = /* @__PURE__ */ new Map();
 	for (const prim of prims) {
 		const typeName = String(prim.GetTypeName());
-		if (typeName !== "Mesh" && typeName !== "Sphere" && typeName !== "Cylinder") continue;
+		if (typeName !== "Mesh" && !isAnalyticGprimTypeName(typeName)) continue;
 		const material = materialBinding(pxr, prim) ?? geomSubsetMaterialFallback(pxr, prim);
 		elements.push({
 			path: String(prim.GetPath()),
 			doubleSided: Boolean(attr(prim, "doubleSided", time, false)),
 			material,
-			geometry: typeName === "Sphere" ? triangulateSphere(pxr, prim, time) : typeName === "Cylinder" ? triangulateCylinder(pxr, prim, time) : triangulateMesh(pxr, stage, prim, time, material, materialTextureCache)
+			geometry: typeName === "Mesh" ? triangulateMesh(pxr, stage, prim, time, material, materialTextureCache) : triangulateAnalyticGprim(pxr, prim, time, typeName)
 		});
 	}
 	return elements;
@@ -992,25 +998,14 @@ function isValid(value) {
 function isBlobLike(value) {
 	return typeof Blob !== "undefined" && value instanceof Blob;
 }
-function getEffectivePath(path) {
-	if (!path) return "";
-	try {
-		const url = new URL(path, window.location.origin);
-		const filename = url.searchParams.get("filename");
-		if (filename) return filename;
-	} catch {}
-	return path;
-}
 function extensionForPath(path) {
-	const effective = getEffectivePath(path);
-	const withoutQuery = effective.split(/[?#]/)[0] ?? effective;
+	const withoutQuery = path.split(/[?#]/)[0] ?? path;
 	const extension = /\.([a-z0-9]+)$/i.exec(withoutQuery)?.[1]?.toLowerCase();
 	if (extension === "usd" || extension === "usda" || extension === "usdc" || extension === "usdz") return extension;
 	return "usda";
 }
 function fileNameForSource(sourcePath, fallbackExtension) {
-	const effective = getEffectivePath(sourcePath);
-	const name = (effective.split(/[?#]/)[0] ?? effective).split("/").filter(Boolean).pop();
+	const name = (sourcePath.split(/[?#]/)[0] ?? sourcePath).split("/").filter(Boolean).pop();
 	if (name && /\.[a-z0-9]+$/i.test(name)) return sanitizeFileName(name);
 	return `scene.${fallbackExtension}`;
 }
@@ -1062,20 +1057,6 @@ function createUSDInputDirectory(pxr, workingDirectory) {
 async function writeUSDFiles(pxr, directory, files) {
 	for (const [relativePath, file] of Object.entries(files ?? {})) {
 		const filePath = joinFsPath(directory, relativePath);
-		
-		// Ensure parent directories exist recursively in Emscripten FS without double slashes
-		const parts = filePath.split('/').filter(Boolean);
-		parts.pop();
-		let current = '';
-		for (const part of parts) {
-			current += '/' + part;
-			try {
-				if (!pxr.FS.exists(current)) {
-					pxr.FS.mkdir(current);
-				}
-			} catch (e) {}
-		}
-		
 		pxr.FS.writeFile(filePath, await sourceToWritableData(file));
 	}
 }
@@ -1270,10 +1251,7 @@ var USDLoader = class extends Loader {
 		});
 	}
 	async getPxr() {
-		if (!this.pxrPromise) {
-			if (!this.options.pxrCore) throw new Error("USDLoader requires either a pxr instance or pxrCore");
-			this.pxrPromise = createPxr(this.options.pxrCore, this.options.pxrOptions);
-		}
+		if (!this.pxrPromise) this.pxrPromise = new PXR().load(this.options.pxrOptions);
 		return this.pxrPromise;
 	}
 };

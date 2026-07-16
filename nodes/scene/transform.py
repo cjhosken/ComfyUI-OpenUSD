@@ -20,7 +20,7 @@ class TransformUSDPrim:
         }
 
     def transform_prim(self, USD, prim_path, translation, rotation, scale):
-        stage = USD
+        stage = USD.get("stage", None)
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")

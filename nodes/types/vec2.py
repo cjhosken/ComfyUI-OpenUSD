@@ -22,7 +22,7 @@ class CreateUSDVec2:
     def create_vec2(self, x, y, vec2_type):
         ctor, _ = CONVERTERS[vec2_type]
 
-        value = ctor((x, y)) if callable(ctor) else ctor((x, y))
+        value = ctor((x, y))
 
         return (
             {

@@ -1,4 +1,4 @@
-from .utils import CONVERTERS, hex_to_rgba
+from .utils import CONVERTERS
 
 
 class CreateUSDColor:

@@ -27,13 +27,10 @@ class GetUSDPrimUSDA:
         if not prim.IsValid():
             raise ValueError(f"Prim not found: {prim_path}")
 
-        layer = Sdf.Layer.CreateAnonymous()
-        temp_stage = Usd.Stage.Open(layer)
-
-        # IMPORTANT: define ONLY the prim path you want
-        temp_root = temp_stage.DefinePrim(prim_path, prim.GetTypeName())
-
-        return ({"stage": stage}, layer.ExportToString(),)
+        src_layer = stage.GetRootLayer()
+        dst_layer = Sdf.Layer.CreateAnonymous()
+        Sdf.CopySpec(src_layer, Sdf.Path(prim_path), dst_layer, Sdf.Path(prim_path))
+        return ({"stage": stage}, dst_layer.ExportToString(),)
     
 class SetUSDPrimUSDA:
     CATEGORY = "3d/usd/prim"
@@ -56,27 +53,17 @@ class SetUSDPrimUSDA:
         if stage is None:
             raise RuntimeError("Invalid USD stage")
 
-        # ---------------------------------------------------------
-        # Parse USDA into a temporary layer
-        # ---------------------------------------------------------
         layer = Sdf.Layer.CreateAnonymous()
         success = layer.ImportFromString(usda_text)
 
         if not success:
             raise RuntimeError("Failed to parse USDA text")
 
-        # ---------------------------------------------------------
-        # APPLY STRATEGY
-        # ---------------------------------------------------------
         if mode == "overwrite":
-            # Replace entire root layer content
             stage.GetRootLayer().Clear()
             stage.GetRootLayer().TransferContent(layer)
-
         elif mode == "merge":
-            # Standard USD composition-style merge
             stage.GetRootLayer().TransferContent(layer)
-
         else:
             raise ValueError(f"Unknown mode: {mode}")
 

@@ -84,7 +84,7 @@ function fsDirname(path) {
 	return normalized.slice(0, index);
 }
 function extensionOf(path) {
-	const match = /\.([A-Za-z0-9]+)$/.exec(path.split(/[?#]/)[0] ?? path);
+	const match = /\.([A-Za-z0-9]+)(?:\]+)?$/.exec(path.split(/[?#]/)[0] ?? path);
 	return match ? `.${match[1]?.toLowerCase()}` : "";
 }
 function contentTypeForPath(path) {
@@ -99,18 +99,8 @@ function contentTypeForPath(path) {
 function baseName(path) {
 	return normalizeFsRelativePath(path).split("/").pop() ?? "";
 }
-function getEffectivePath(path) {
-	if (!path) return "";
-	try {
-		const url = new URL(path, window.location.origin);
-		const filename = url.searchParams.get("filename");
-		if (filename) return filename;
-	} catch {}
-	return path;
-}
 function fileNameForSource(sourcePath) {
-	const effective = getEffectivePath(sourcePath);
-	const name = (effective.split(/[?#]/)[0] ?? effective).split("/").filter(Boolean).pop();
+	const name = (sourcePath.split(/[?#]/)[0] ?? sourcePath).split("/").filter(Boolean).pop();
 	return name && /\.[a-z0-9]+$/i.test(name) ? name : "scene.usda";
 }
 function toArrayBuffer(data) {
@@ -246,20 +236,6 @@ function writeQueueableLayer(pxr, directory, files, relativePath, data) {
 	if (!isQueueableUsdLayer(relativePath)) return;
 	const filePath = joinFsPath(directory, relativePath);
 	if (!files[relativePath]) files[relativePath] = data;
-
-	// Ensure parent directories exist recursively in Emscripten FS without double slashes
-	const parts = filePath.split('/').filter(Boolean);
-	parts.pop();
-	let current = '';
-	for (const part of parts) {
-		current += '/' + part;
-		try {
-			if (!pxr.FS.exists(current)) {
-				pxr.FS.mkdir(current);
-			}
-		} catch (e) {}
-	}
-
 	pxr.FS.writeFile(filePath, data);
 }
 function urlForSourceRelativePath(sourceRelativePath, rootSourceUrl) {

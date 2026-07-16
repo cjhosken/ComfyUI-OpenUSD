@@ -1,4 +1,4 @@
-from pxr import Usd, UsdGeom
+from pxr import UsdGeom
 
 class ConfigureUSDStage:
     CATEGORY = "3d/usd/composition"
@@ -18,6 +18,9 @@ class ConfigureUSDStage:
 
     def configure_stage(self, USD, up_axis, meters_per_unit):
         stage = USD.get("stage", None)
+
+        if stage is None:
+            raise RuntimeError("Invalid USD stage")
 
         # Apply coordinate up-axis
         axis_token = UsdGeom.Tokens.y if up_axis == "Y" else UsdGeom.Tokens.z

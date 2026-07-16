@@ -2,7 +2,7 @@ import { app } from "../../../scripts/app.js";
 
 import { createVec2Widget } from "./widgets/vec2.js";
 import { createVec3Widget } from "./widgets/vec3.js";
-import { createVec3Widget } from "./widgets/vec4.js";
+import { createVec4Widget } from "./widgets/vec4.js";
 
 app.registerExtension({
     name: "usd.datatypes",

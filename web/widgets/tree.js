@@ -29,6 +29,40 @@ export class USDTreeView {
             background: var(--usd-bg-base, #141418);
         `;
 
+        // Left side: tree
+        this.treeSide = document.createElement('div');
+        this.treeSide.style.cssText = `
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+        `;
+
+        // Search bar
+        this.searchBar = document.createElement('div');
+        this.searchBar.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 6px;
+            background: var(--usd-bg-deep, #121214);
+            border-bottom: 1px solid var(--usd-border, #3c3c40);
+            flex-shrink: 0;
+        `;
+        this.searchInput = document.createElement('input');
+        this.searchInput.type = 'text';
+        this.searchInput.placeholder = 'Filter prims\u2026';
+        this.searchInput.className = 'usd-search-input';
+        this.searchInput.addEventListener('input', () => {
+            this.filterText = this.searchInput.value.toLowerCase();
+            this._renderTree();
+        });
+        this.searchInput.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+        });
+        this.searchBar.appendChild(this.searchInput);
+
         // Tree scroll area
         this.treeScroll = document.createElement('div');
         this.treeScroll.className = 'usd-tree-container';
@@ -40,7 +74,10 @@ export class USDTreeView {
         `;
         this._showEmpty('No USD data loaded');
 
-        // Attributes panel (shown on selection)
+        this.treeSide.appendChild(this.searchBar);
+        this.treeSide.appendChild(this.treeScroll);
+
+        // Right side: attributes panel
         this.attrPanel = document.createElement('div');
         this.attrPanel.className = 'usd-info-panel';
         this.attrPanel.style.cssText = `
@@ -53,7 +90,9 @@ export class USDTreeView {
             min-height: 0;
         `;
 
-        this.container.appendChild(this.treeScroll);
+        this.filterText = '';
+
+        this.container.appendChild(this.treeSide);
         this.container.appendChild(this.attrPanel);
     }
 
@@ -70,6 +109,8 @@ export class USDTreeView {
     async load(usdaText, filePath) {
         this.selectedPath = null;
         this.expandedPaths.clear();
+        this.filterText = '';
+        if (this.searchInput) this.searchInput.value = '';
         this._removeContextMenu();
         this.attrPanel.style.display = 'none';
         this.attrPanel.innerHTML = '';
@@ -114,6 +155,7 @@ export class USDTreeView {
     expandAll() {
         if (!this.primRoot) return;
         const collect = (node) => {
+            if (this.filterText && !this._nodeMatchesFilter(node)) return;
             this.expandedPaths.add(node.path);
             (node.children || []).forEach(collect);
         };
@@ -136,6 +178,15 @@ export class USDTreeView {
         (node.children || []).forEach(c => this._autoExpand(c, depth + 1, maxDepth));
     }
 
+    _nodeMatchesFilter(node) {
+        if (!this.filterText) return true;
+        const matchesSelf = node.name.toLowerCase().includes(this.filterText) ||
+                            node.path.toLowerCase().includes(this.filterText) ||
+                            (node.type || '').toLowerCase().includes(this.filterText);
+        if (matchesSelf) return true;
+        return (node.children || []).some(c => this._nodeMatchesFilter(c));
+    }
+
     _showEmpty(msg) {
         this.treeScroll.innerHTML = `<div class="usd-empty-msg">${msg}</div>`;
     }
@@ -154,6 +205,15 @@ export class USDTreeView {
     _appendNode(parent, node, depth) {
         const hasChildren = (node.children || []).length > 0;
         const isExpanded = this.expandedPaths.has(node.path);
+
+        // Filter: hide non-matching prims unless a descendant matches
+        if (this.filterText) {
+            const matchesSelf = node.name.toLowerCase().includes(this.filterText) ||
+                                node.path.toLowerCase().includes(this.filterText) ||
+                                (node.type || '').toLowerCase().includes(this.filterText);
+            const matchesChild = hasChildren && (node.children || []).some(c => this._nodeMatchesFilter(c));
+            if (!matchesSelf && !matchesChild) return;
+        }
 
         /* Row */
         const row = document.createElement('div');
@@ -248,6 +308,16 @@ export class USDTreeView {
         this._attrRow(this.attrPanel, 'type', 'string', node.type || 'Prim');
         this._attrRow(this.attrPanel, 'active', 'bool', String(node.active !== false));
 
+        // Metadata
+        const meta = node.metadata || {};
+        const metaKeys = Object.keys(meta);
+        if (metaKeys.length > 0) {
+            this._section(this.attrPanel, 'Metadata');
+            metaKeys.forEach(key => {
+                this._attrRow(this.attrPanel, key, '', _fmtVal(meta[key]));
+            });
+        }
+
         // Attributes
         const attrs = node.attributes || {};
         const attrKeys = Object.keys(attrs);
@@ -255,12 +325,37 @@ export class USDTreeView {
             this._section(this.attrPanel, 'Attributes');
             attrKeys.forEach(key => {
                 const a = attrs[key];
-                this._attrRow(
-                    this.attrPanel,
-                    key,
-                    a.type || '',
-                    _fmtVal(a.value)
-                );
+                const row = document.createElement('div');
+                row.className = 'usd-attr-row';
+
+                const n = document.createElement('span');
+                n.className = 'usd-attr-name';
+                n.textContent = key;
+                n.title = key;
+
+                const t = document.createElement('span');
+                t.className = 'usd-attr-type';
+                t.textContent = a.type || '';
+
+                const v = document.createElement('span');
+                v.className = 'usd-attr-value';
+                v.textContent = _fmtVal(a.value);
+                v.title = typeof a.value === 'object' ? JSON.stringify(a.value) : String(a.value ?? '');
+
+                row.appendChild(n);
+                row.appendChild(t);
+                row.appendChild(v);
+                this.attrPanel.appendChild(row);
+            });
+        }
+
+        // Connections
+        const connections = node.connections || {};
+        const connKeys = Object.keys(connections);
+        if (connKeys.length > 0) {
+            this._section(this.attrPanel, 'Connections');
+            connKeys.forEach(key => {
+                this._attrRow(this.attrPanel, key, 'connection', connections[key]);
             });
         }
 
@@ -312,14 +407,14 @@ export class USDTreeView {
             position: fixed;
             left: ${x}px;
             top: ${y}px;
-            background: #25252d;
-            border: 1px solid #3c3c4a;
+            background: #2d2e32;
+            border: 1px solid #3c3d42;
             box-shadow: 0 4px 12px rgba(0,0,0,0.5);
             border-radius: 4px;
             padding: 4px 0;
             z-index: 10000;
             min-width: 140px;
-            font-family: sans-serif;
+            font-family: var(--usd-font-ui, sans-serif);
             font-size: 12px;
         `;
 
@@ -333,7 +428,7 @@ export class USDTreeView {
         `;
         item.textContent = "Copy Prim Path";
         item.addEventListener('mouseenter', () => {
-            item.style.background = '#3e3e4f';
+            item.style.background = '#313235';
         });
         item.addEventListener('mouseleave', () => {
             item.style.background = 'transparent';

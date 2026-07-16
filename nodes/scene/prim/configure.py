@@ -77,4 +77,4 @@ class ConfigureUSDPrim:
             except Exception as e:
                 print(f"[ConfigureUSDPrim] Error setting comment: {e}")
 
-            return ({"stage": stage},)
+        return ({"stage": stage},)

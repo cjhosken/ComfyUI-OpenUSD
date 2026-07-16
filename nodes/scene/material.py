@@ -31,7 +31,7 @@ class ApplyUSDMaterial:
         }
 
     def apply_material(self, USD, material_prim_path, mesh_prim_path, diffuse_color, roughness, metallic, emissive_color, opacity, ior, diffuse_texture="", roughness_texture="", metallic_texture=""):
-        stage = USD
+        stage = USD.get("stage", None)
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")

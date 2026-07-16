@@ -13,20 +13,20 @@ def register_in_memory_stage(usda_text):
     return h
 
 def resolve_usd_paths(layer, relative=False):
-        if not layer.realPath or layer.anonymous:
-             return
-        
-        anchor_path = os.path.abspath(layer.realPath)
+    if not layer.realPath or layer.anonymous:
+        return
 
-        for ref in layer.GetExternalReferences():
-            if (os.path.isabs(ref)):
-                if relative:
-                    new_ref = ref.replace(os.path.dirname(anchor_path), "./")
-                    layer.UpdateExternalReference(ref, new_ref)
-            else:
-                if not relative:
-                    new_ref = os.path.normpath(os.path.join(os.path.dirname(anchor_path), ref))
-                    layer.UpdateExternalReference(ref, new_ref)
+    anchor_path = os.path.abspath(layer.realPath)
+
+    for ref in layer.GetExternalReferences():
+        if os.path.isabs(ref):
+            if relative:
+                new_ref = ref.replace(os.path.dirname(anchor_path), "./")
+                layer.UpdateExternalReference(ref, new_ref)
+        else:
+            if not relative:
+                new_ref = os.path.normpath(os.path.join(os.path.dirname(anchor_path), ref))
+                layer.UpdateExternalReference(ref, new_ref)
 
 def find_prims(stage, prim_path):
     matched_prims = []

@@ -1,4 +1,4 @@
-from pxr import Usd, Sdf
+from pxr import Usd
 
 class TextToUSD:
     CATEGORY = "3d/usd/convert"

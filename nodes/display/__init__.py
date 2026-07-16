@@ -1,0 +1,9 @@
+from . import viewer
+
+NODE_CLASS_MAPPINGS = {
+    **viewer.NODE_CLASS_MAPPINGS,
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    **viewer.NODE_DISPLAY_NAME_MAPPINGS,
+}

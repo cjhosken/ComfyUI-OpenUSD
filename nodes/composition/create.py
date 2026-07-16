@@ -16,7 +16,7 @@ class CreateUSDStage:
         }
     
     @classmethod
-    def IS_CHANGED(self, up_axis, meters_per_unit):
+    def IS_CHANGED(cls, up_axis, meters_per_unit):
         return float("NaN")
 
     def create_stage(self,up_axis, meters_per_unit):

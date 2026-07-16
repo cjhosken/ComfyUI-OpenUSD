@@ -399,8 +399,8 @@ async function captureAndUploadRender(node) {
     document.head.appendChild(link);
 })();
 
-const NODE_W = 400;
-const NODE_H = 500;
+const NODE_W = 420;
+const NODE_H = 600;
 
 /* ---- Global fetch interceptor for relative USD references ------------- */
 const originalFetch = window.fetch;
@@ -461,10 +461,10 @@ app.registerExtension({
         /* ============================================================
            PreviewUSD node
            ============================================================ */
-        if (nodeData.name === "PreviewUSD") {
-            const onNodeCreated = nodeType.prototype.onNodeCreated;
+        if (nodeData.name === "PreviewUSD" || nodeData.name === "SimpleUSDViewer") {
+            const _prevOnCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
-                onNodeCreated?.apply(this, arguments);
+                _prevOnCreated?.apply(this, arguments);
                 this.size = [NODE_W, NODE_H];
 
                 /* ---- Root container -------------------------------- */
@@ -474,7 +474,7 @@ app.registerExtension({
                     height: 100%;
                     display: flex;
                     flex-direction: column;
-                    background: var(--usd-bg-deep, #0d0d10);
+                    background: var(--usd-bg-deep, #171718);
                     position: relative;
                     overflow: hidden;
                 `;
@@ -487,12 +487,44 @@ app.registerExtension({
                     min-height: 200px;
                 `;
 
+                let treeView = null;
+
+                /* ---- Resizable split handle ------------------------ */
+                const splitHandle = document.createElement("div");
+                splitHandle.style.cssText = `
+                    height: 5px;
+                    background: var(--usd-bg-deep, #171718);
+                    border-top: 1px solid var(--usd-border, #3c3d42);
+                    border-bottom: 1px solid var(--usd-border, #3c3d42);
+                    cursor: row-resize;
+                    flex-shrink: 0;
+                    position: relative;
+                `;
+                const splitIndicator = document.createElement("div");
+                splitIndicator.style.cssText = `
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    width: 30px;
+                    height: 3px;
+                    background: var(--usd-text-dim, #8a8a8a);
+                    border-radius: 2px;
+                    transition: background 0.15s;
+                `;
+                splitHandle.appendChild(splitIndicator);
+                splitHandle.addEventListener("mouseenter", () => {
+                    splitIndicator.style.background = "var(--usd-accent, #0b8ce9)";
+                });
+                splitHandle.addEventListener("mouseleave", () => {
+                    splitIndicator.style.background = "var(--usd-text-dim, #8a8a8a)";
+                });
+
                 /* ---- Tree panel ------------------------------------ */
                 const treePanel = document.createElement("div");
                 treePanel.style.cssText = `
-                    height: 200px;
-                    border-top: 1px solid var(--usd-border, #2e2e3a);
-                    background: var(--usd-bg-base, #141418);
+                    height: 250px;
+                    background: var(--usd-bg-base, #202121);
                     display: flex;
                     flex-direction: column;
                     overflow: hidden;
@@ -530,7 +562,44 @@ app.registerExtension({
                 treePanel.appendChild(treeViewContainer);
 
                 container.appendChild(viewportContainer);
+                container.appendChild(splitHandle);
                 container.appendChild(treePanel);
+
+                /* ---- Split resize logic ---------------------------- */
+                {
+                    let dragging = false;
+                    let startY = 0;
+                    let startTreeH = 0;
+                    splitHandle.addEventListener("pointerdown", (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        dragging = true;
+                        startY = e.clientY;
+                        startTreeH = treePanel.getBoundingClientRect().height;
+                        splitHandle.setPointerCapture(e.pointerId);
+                    });
+                    splitHandle.addEventListener("pointermove", (e) => {
+                        if (!dragging) return;
+                        e.stopPropagation();
+                        const dy = startY - e.clientY;
+                        const newH = Math.max(100, Math.min(container.clientHeight - 150, startTreeH + dy));
+                        treePanel.style.height = newH + "px";
+                        viewport.resize();
+                    });
+                    splitHandle.addEventListener("pointerup", (e) => {
+                        dragging = false;
+                        e.stopPropagation();
+                    });
+                }
+
+                treeView = new USDTreeView(treeViewContainer, {
+                    onPrimSelected: (prim) => {
+                        console.log("[USD] Selected prim:", prim.path);
+                    },
+                });
+
+                expandBtn.addEventListener('click', () => treeView.expandAll());
+                collapseBtn.addEventListener('click', () => treeView.collapseAll());
 
                 /* ---- DOM widget ------------------------------------ */
                 const widget = this.addDOMWidget("usd_viewer", "HTML", container);
@@ -545,29 +614,20 @@ app.registerExtension({
                     container.addEventListener(ev, stopBubble, { passive: ev !== "wheel" });
                 });
 
-                /* ---- Instantiate widgets -------------------------- */
+                /* ---- Instantiate viewport -------------------------- */
                 const viewport = new USDViewport(viewportContainer, {
                     width: NODE_W,
-                    height: NODE_H - 200,
+                    height: NODE_H,
                 });
-
-                const treeView = new USDTreeView(treeViewContainer, {
-                    onPrimSelected: (prim) => {
-                        console.log("[USD] Selected prim:", prim.path);
-                    },
-                });
-
-                expandBtn.addEventListener('click', () => treeView.expandAll());
-                collapseBtn.addEventListener('click', () => treeView.collapseAll());
 
                 this.viewport = viewport;
                 this.treeView = treeView;
                 this.viewportContainer = viewportContainer;
             };
 
-            const onExecuted = nodeType.prototype.onExecuted;
+            const _prevOnExecuted = nodeType.prototype.onExecuted;
             nodeType.prototype.onExecuted = async function (message) {
-                onExecuted?.apply(this, arguments);
+                _prevOnExecuted?.apply(this, arguments);
 
                 if (!this.viewport) {
                     console.warn("[USD] Viewport not initialized");
@@ -594,15 +654,15 @@ app.registerExtension({
                     if (isSameModel) {
                         this.viewport.setFrame(frame);
                     } else {
-                        /* Load 3-D viewport */
                         await this.viewport.loadUSD(filePath, usdaText, frame, usdHash);
                     }
 
-                    /* Load prim tree - prefers usdaText if available, falls back to filePath */
-                    if (usdaText) {
-                        await this.treeView.load(usdaText, filePath || null);
-                    } else if (filePath) {
-                        await this.treeView.load(null, filePath);
+                    if (this.treeView) {
+                        if (usdaText) {
+                            await this.treeView.load(usdaText, filePath || null);
+                        } else if (filePath) {
+                            await this.treeView.load(null, filePath);
+                        }
                     }
                 } catch (error) {
                     console.error("[USD] Failed to load:", error);
@@ -615,16 +675,16 @@ app.registerExtension({
             onNodeCreated?.apply(this, arguments);
 
             // Apply custom node category colors for USD suite
-            const categoryColors = {
-                "3d/USD/IO": { color: "#1a3a3a", bgcolor: "#2d4d4d" },
-                "3d/USD/View": { color: "#1e2b4d", bgcolor: "#2c3b5d" },
-                "3d/USD/Conversion": { color: "#4d2e1e", bgcolor: "#5d3e2c" },
-                "3d/USD/Composition": { color: "#3d1e4d", bgcolor: "#4c2c5d" },
-                "3d/USD/Prim": { color: "#1e4d2b", bgcolor: "#2c5d3b" },
-                "3d/USD/Attribute": { color: "#1e3d23", bgcolor: "#2c4d32" },
-                "3d/USD/Data": { color: "#2d2d30", bgcolor: "#3d3d40" },
-                "3d/USD/Scene": { color: "#2d3e4d", bgcolor: "#3d4c5d" }
-            };
+                const categoryColors = {
+                    "3d/usd/io": { color: "#173030", bgcolor: "#264545" },
+                    "3d/usd/view": { color: "#172a40", bgcolor: "#263a50" },
+                    "3d/usd/convert": { color: "#402a17", bgcolor: "#503a26" },
+                    "3d/usd/composition": { color: "#2a1740", bgcolor: "#3a2650" },
+                    "3d/usd/scene": { color: "#17352a", bgcolor: "#26453a" },
+                    "3d/usd/utils": { color: "#262729", bgcolor: "#313235" },
+                    "3d/usd/data": { color: "#262729", bgcolor: "#313235" },
+                    "3d/usd/mesh": { color: "#2a3020", bgcolor: "#3a4030" }
+                };
             const colors = categoryColors[nodeData.category];
             if (colors) {
                 this.color = colors.color;
@@ -756,7 +816,7 @@ app.registerExtension({
                     height: 100%;
                     display: flex;
                     flex-direction: column;
-                    background: var(--usd-bg-deep, #0d0d10);
+                    background: var(--usd-bg-deep, #171718);
                     position: relative;
                     overflow: hidden;
                 `;
@@ -773,14 +833,14 @@ app.registerExtension({
                     left: 0;
                     width: 100%;
                     height: 100%;
-                    background: rgba(13, 13, 16, 0.95);
+                    background: rgba(23, 23, 24, 0.95);
                     backdrop-filter: blur(8px);
                     display: none;
                     flex-direction: column;
                     align-items: center;
                     justify-content: center;
                     z-index: 100;
-                    color: #d1d1db;
+                    color: #a0a0a0;
                     font-family: sans-serif;
                 `;
                 
@@ -789,13 +849,13 @@ app.registerExtension({
                 progressTitle.textContent = "Rendering Sequence...";
                 
                 const progressBarBg = document.createElement("div");
-                progressBarBg.style.cssText = "width: 70%; height: 6px; background: #22222a; border-radius: 3px; overflow: hidden; margin-bottom: 8px;";
+                progressBarBg.style.cssText = "width: 70%; height: 6px; background: #313235; border-radius: 3px; overflow: hidden; margin-bottom: 8px;";
                 
                 const progressBarFill = document.createElement("div");
-                progressBarFill.style.cssText = "width: 0%; height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); transition: width 0.1s ease-out; border-radius: 3px;";
+                progressBarFill.style.cssText = "width: 0%; height: 100%; background: linear-gradient(90deg, #0b8ce9, #8200da); transition: width 0.1s ease-out; border-radius: 3px;";
                 
                 const progressText = document.createElement("div");
-                progressText.style.cssText = "font-size: 11px; color: #88889c;";
+                progressText.style.cssText = "font-size: 11px; color: #8a8a8a;";
                 progressText.textContent = "Initializing...";
                 
                 progressBarBg.appendChild(progressBarFill);
@@ -1119,5 +1179,6 @@ app.registerExtension({
                 this.setDirtyCanvas(true, true);
             };
         }
+
     },
 });

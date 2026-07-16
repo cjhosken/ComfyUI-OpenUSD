@@ -44,7 +44,7 @@ class CreateUSDLight:
     def create_light(self, USD, prim_path, light_type, intensity, intensity_mode,
                      exposure, exposure_mode, color, color_mode,
                      texture_path="", texture_mode="ignore"):
-        stage = USD
+        stage = USD.get("stage", None)
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")

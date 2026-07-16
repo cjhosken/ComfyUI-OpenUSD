@@ -58,7 +58,7 @@ export class USDViewport {
     initScene() {
         try {
             this.scene = new THREE.Scene();
-            this.camera = new THREE.PerspectiveCamera(45, this.width / this.height, 0.1, 1000);
+            this.camera = new THREE.PerspectiveCamera(45, this.width / this.height, 0.01, 100000);
             this.camera.position.set(0, 0, 5);
 
             this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -68,11 +68,15 @@ export class USDViewport {
             this.renderer.domElement.style.touchAction = "none";
             this.container.appendChild(this.renderer.domElement);
 
-            // Lighting
-            this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            dirLight.position.set(10, 10, 10);
-            this.scene.add(dirLight);
+            // Lighting — ambient fill + headlight (follows camera)
+            this.ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            this.scene.add(this.ambientLight);
+
+            this.headlight = new THREE.DirectionalLight(0xffffff, 1.2);
+            this.headlight.position.copy(this.camera.position);
+            this.scene.add(this.headlight);
+
+            this.hasUsdLights = false;
 
             // Resize observer
             this.resizeObserver = new ResizeObserver(() => {
@@ -89,6 +93,8 @@ export class USDViewport {
 
     initControls() {
         const canvas = this.renderer.domElement;
+        this.orbitTarget = new THREE.Vector3();
+        this.orbitSpherical = new THREE.Spherical();
 
         const onPointerDown = (e) => {
             e.stopPropagation();
@@ -103,23 +109,33 @@ export class USDViewport {
             e.stopPropagation();
             e.preventDefault();
 
-            const deltaMove = {
-                x: e.clientX - this.previousMousePosition.x,
-                y: e.clientY - this.previousMousePosition.y
-            };
+            const dx = e.clientX - this.previousMousePosition.x;
+            const dy = e.clientY - this.previousMousePosition.y;
 
             if (e.buttons === 4 || (e.buttons === 1 && e.shiftKey)) {
-                const factor = this.camera.position.length() * 0.0025;
-                this.camera.translateX(-deltaMove.x * factor);
-                this.camera.translateY(deltaMove.y * factor);
+                const factor = this.camera.position.distanceTo(this.orbitTarget) * 0.002;
+                const right = new THREE.Vector3();
+                const up = new THREE.Vector3();
+                this.camera.getWorldDirection(right);
+                right.cross(this.camera.up).normalize();
+                up.copy(this.camera.up).normalize();
+                this.orbitTarget.addScaledVector(right, -dx * factor);
+                this.orbitTarget.addScaledVector(up, dy * factor);
+                this.updateOrbitCamera();
             } else if (e.buttons === 2 || (e.buttons === 1 && (e.ctrlKey || e.altKey))) {
-                const factor = this.camera.position.length() * 0.005;
-                this.camera.translateZ(deltaMove.y * factor);
+                const factor = this.camera.position.distanceTo(this.orbitTarget) * 0.005;
+                const dir = new THREE.Vector3().subVectors(this.camera.position, this.orbitTarget).normalize();
+                this.camera.position.addScaledVector(dir, dy * factor);
+                this.updateOrbitCamera();
             } else if (e.buttons === 1) {
-                if (this.currentModel) {
-                    this.currentModel.rotation.y += deltaMove.x * 0.01;
-                    this.currentModel.rotation.x += deltaMove.y * 0.01;
-                }
+                const offset = new THREE.Vector3().subVectors(this.camera.position, this.orbitTarget);
+                this.orbitSpherical.setFromVector3(offset);
+                this.orbitSpherical.theta -= dx * 0.005;
+                this.orbitSpherical.phi -= dy * 0.005;
+                this.orbitSpherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.orbitSpherical.phi));
+                offset.setFromSpherical(this.orbitSpherical);
+                this.camera.position.copy(this.orbitTarget).add(offset);
+                this.camera.lookAt(this.orbitTarget);
             }
 
             this.previousMousePosition = { x: e.clientX, y: e.clientY };
@@ -133,8 +149,10 @@ export class USDViewport {
         const onWheel = (e) => {
             e.stopPropagation();
             e.preventDefault();
-            const factor = this.camera.position.length() * 0.05;
-            this.camera.translateZ((e.deltaY > 0 ? 1 : -1) * factor);
+            const factor = this.camera.position.distanceTo(this.orbitTarget) * 0.1;
+            const dir = new THREE.Vector3().subVectors(this.camera.position, this.orbitTarget).normalize();
+            this.camera.position.addScaledVector(dir, (e.deltaY > 0 ? 1 : -1) * factor);
+            this.updateOrbitCamera();
         };
 
         const onContextMenu = (e) => {
@@ -149,6 +167,10 @@ export class USDViewport {
         canvas.addEventListener('pointercancel', onPointerUp);
         canvas.addEventListener('wheel', onWheel, { passive: false });
         canvas.addEventListener('contextmenu', onContextMenu);
+    }
+
+    updateOrbitCamera() {
+        this.camera.lookAt(this.orbitTarget);
     }
 
     initUI() {
@@ -244,13 +266,18 @@ export class USDViewport {
     togglePlayback() {
         this.isPlaying = !this.isPlaying;
         this.playBtn.textContent = this.isPlaying ? "Pause" : "Play";
-        this.playBtn.style.background = this.isPlaying ? "#f43f5e" : "#22252a";
-        this.playBtn.style.color = this.isPlaying ? "#ffffff" : "#a1a1aa";
+        this.playBtn.style.background = this.isPlaying ? "#f75951" : "#2d2e32";
+        this.playBtn.style.color = this.isPlaying ? "#ffffff" : "#a0a0a0";
     }
 
     applyShading(mode) {
         if (!this.currentModel) return;
         this.shadingMode = mode;
+
+        // Manage headlight: on for clay, or rendered when no USD lights
+        const useHeadlight = mode === "clay" || (mode === "rendered" && !this.hasUsdLights);
+        this.headlight.visible = useHeadlight;
+        this.ambientLight.intensity = mode === "clay" ? 0.6 : 0.4;
 
         this.currentModel.traverse((child) => {
             if (!child.isMesh) return;
@@ -510,9 +537,6 @@ export class USDViewport {
 
     switchCamera(cameraPath) {
         if (cameraPath === "persp") {
-            if (this.currentModel) {
-                this.currentModel.rotation.set(0, 0, 0);
-            }
             this.camera.fov = 45;
             this.camera.updateProjectionMatrix();
             this.fitCameraToModel();
@@ -566,11 +590,15 @@ export class USDViewport {
         const fovRad = this.camera.fov * (Math.PI / 180);
         const dist = Math.abs(maxDim / (2 * Math.tan(fovRad / 2))) * 1.5;
 
+        this.orbitTarget.copy(center);
         this.camera.position.set(center.x, center.y, center.z + dist);
-        this.camera.lookAt(center);
-        this.camera.near = dist / 100;
-        this.camera.far = dist * 100;
+        this.camera.lookAt(this.orbitTarget);
+        this.camera.near = Math.max(0.001, dist / 10000);
+        this.camera.far = dist * 10000;
         this.camera.updateProjectionMatrix();
+
+        const offset = new THREE.Vector3().subVectors(this.camera.position, this.orbitTarget);
+        this.orbitSpherical.setFromVector3(offset);
     }
 
     async loadUSD(filePath, usdaText = null, frame = null, usdHash = null) {
@@ -593,7 +621,13 @@ export class USDViewport {
             let model;
 
             const isBinaryOrUsdz = filePath && (filePath.toLowerCase().endsWith('.usdz') || filePath.toLowerCase().endsWith('.usd'));
-            if (filePath && usdHash) {
+            if (usdaText && !isBinaryOrUsdz) {
+                const arrayBuffer = new TextEncoder().encode(usdaText).buffer;
+                const parseOptions = {
+                    sourcePath: `/usd/view?filename=${encodeURIComponent(filePath || 'scene.usda')}`
+                };
+                model = await this.loader.parseAsync(arrayBuffer, parseOptions);
+            } else if (filePath && usdHash) {
                 const url = `/usd/view?filename=${encodeURIComponent(filePath)}&h=${encodeURIComponent(usdHash)}`;
                 const parsedFileName = (filePath.split('/').pop() || 'scene') + '.usda';
                 const res = await fetch(url);
@@ -602,12 +636,6 @@ export class USDViewport {
                 const parseOptions = {
                     sourcePath: `/usd/view?filename=${encodeURIComponent(filePath)}`,
                     fileName: parsedFileName
-                };
-                model = await this.loader.parseAsync(arrayBuffer, parseOptions);
-            } else if (usdaText && !isBinaryOrUsdz) {
-                const arrayBuffer = new TextEncoder().encode(usdaText).buffer;
-                const parseOptions = {
-                    sourcePath: `/usd/view?filename=${encodeURIComponent(filePath || 'scene.usda')}`
                 };
                 model = await this.loader.parseAsync(arrayBuffer, parseOptions);
             } else if (filePath) {
@@ -629,12 +657,19 @@ export class USDViewport {
             this.currentModel = model.scene;
             this.scene.add(model.scene);
 
+            // Detect USD lights in the scene
+            this.hasUsdLights = false;
+            this.currentModel.traverse((child) => {
+                if (child.isLight) this.hasUsdLights = true;
+            });
+
             // Extract camera data
             this.currentUsdCameras = model.cameras || model.data?.cameras || [];
             this.updateCameraOptions();
 
-            // Setup timeline
+            // Setup timeline and stage metadata
             const stageData = model.data;
+            this.stageUpAxis = stageData?.stage?.upAxis || "Y";
             this.startFrame = stageData?.stage?.startTimeCode ?? 0;
             this.endFrame = stageData?.stage?.endTimeCode ?? 0;
             this.fps = stageData?.stage?.timeCodesPerSecond || 24;
@@ -658,6 +693,8 @@ export class USDViewport {
                 this.camera.near = savedCamNear;
                 this.camera.far = savedCamFar;
                 this.camera.updateProjectionMatrix();
+                const offset = new THREE.Vector3().subVectors(this.camera.position, this.orbitTarget);
+                this.orbitSpherical.setFromVector3(offset);
             }
 
             // Setup animation
@@ -760,6 +797,10 @@ export class USDViewport {
             }
 
             if (!this.isRenderingOffscreen) {
+                // Sync headlight with camera
+                if (this.headlight.visible) {
+                    this.headlight.position.copy(this.camera.position);
+                }
                 this.renderer.render(this.scene, this.camera);
             }
         };
@@ -778,13 +819,13 @@ export class USDViewport {
         this.container.style.display = "flex";
         this.container.style.alignItems = "center";
         this.container.style.justifyContent = "center";
-        this.container.style.color = "#ef4444";
+        this.container.style.color = "#f75951";
         this.container.style.padding = "20px";
         this.container.style.textAlign = "center";
-        this.container.style.fontFamily = "sans-serif";
+        this.container.style.fontFamily = "var(--usd-font-ui, sans-serif)";
         this.container.style.fontSize = "11px";
         this.container.innerHTML = `
-            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 6px; padding: 12px; width: 85%;">
+            <div style="background: rgba(247, 89, 81, 0.1); border: 1px solid #f75951; border-radius: 6px; padding: 12px; width: 85%;">
                 <strong>${message}</strong><br>
                 Hardware acceleration might be disabled, unsupported, or blocked in your browser.
             </div>

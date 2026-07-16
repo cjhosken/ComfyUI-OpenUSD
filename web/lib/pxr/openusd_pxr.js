@@ -1,3 +1,4 @@
+import { coreURL, wasmURL } from "../core/urls.js";
 //#region src/bindings.ts
 function flatName(moduleName, name) {
 	return `PxrJs${moduleName}${name}`;
@@ -17,7 +18,8 @@ function attachUsing(value) {
 	return value;
 }
 function installUsing(cls) {
-	if (!cls || !cls.prototype || cls.prototype.using) return cls;
+	if (!cls || !cls.prototype) return cls;
+	if (Object.prototype.hasOwnProperty.call(cls.prototype, "using")) return cls;
 	try {
 		Object.defineProperty(cls.prototype, "using", {
 			enumerable: false,
@@ -40,7 +42,7 @@ function mapClass(module, embindName) {
 function mapFunction(module, embindName) {
 	const fn = module[embindName];
 	if (typeof fn !== "function") throw new Error(`Missing Embind export ${embindName}`);
-	return (...args) => fn(...args);
+	return ((...args) => fn(...args));
 }
 function mapObject(module, embindName) {
 	const fn = module[embindName];
@@ -122,6 +124,11 @@ function buildUsdGeomNamespace(module) {
 		Sphere: bindClass(module, "UsdGeom", "Sphere"),
 		Cube: bindClass(module, "UsdGeom", "Cube"),
 		Cylinder: bindClass(module, "UsdGeom", "Cylinder"),
+		Cone: bindClass(module, "UsdGeom", "Cone"),
+		Capsule: bindClass(module, "UsdGeom", "Capsule"),
+		Cylinder_1: bindClass(module, "UsdGeom", "Cylinder_1"),
+		Capsule_1: bindClass(module, "UsdGeom", "Capsule_1"),
+		Plane: bindClass(module, "UsdGeom", "Plane"),
 		Camera: bindClass(module, "UsdGeom", "Camera"),
 		Mesh: bindClass(module, "UsdGeom", "Mesh"),
 		Xformable: bindClass(module, "UsdGeom", "Xformable"),
@@ -254,7 +261,10 @@ function installAccessor(cls, name, getter, setter) {
 function installSdfConvenienceAccessors(pxr) {
 	installGetter(pxr.Sdf.AssetPath, "path", (value) => value.GetAssetPath());
 	installGetter(pxr.Sdf.AssetPath, "resolvedPath", (value) => value.GetResolvedPath());
-	installAccessor(pxr.Sdf.Layer, "subLayerPaths", (value) => value.GetSubLayerPaths(), (value, next) => value.SetSubLayerPaths(next));
+	installAccessor(pxr.Sdf.Layer, "subLayerPaths", (value) => value.GetSubLayerPaths(), (value, next) => {
+		if (!Array.isArray(next) || !next.every((item) => typeof item === "string")) throw new TypeError("Sdf.Layer.subLayerPaths must be assigned a string array");
+		value.SetSubLayerPaths(next);
+	});
 }
 //#endregion
 //#region src/index.ts
@@ -292,9 +302,6 @@ function isNodeLike() {
 	const processLike = globalThis.process;
 	return !!processLike?.versions?.node && processLike.type !== "renderer";
 }
-function isBlobLike(value) {
-	return typeof Blob !== "undefined" && value instanceof Blob;
-}
 function getBrowserBaseHref() {
 	const location = globalThis.location;
 	return typeof location?.href === "string" ? location.href : void 0;
@@ -314,11 +321,10 @@ function assertThreadedBrowserRuntime() {
 	if (!getBrowserBaseHref()) return;
 	const runtime = globalThis;
 	if (typeof SharedArrayBuffer !== "undefined" && runtime.crossOriginIsolated === true) return;
-	throw new Error("openusd_pxr_wasm uses WebAssembly pthreads and requires a cross-origin isolated browser context. Configure your app to send Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp before calling createPxr().");
+	throw new Error("openusd_pxr_wasm uses WebAssembly pthreads and requires a cross-origin isolated browser context. Configure your app to send Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp before calling PXR.load().");
 }
 function toUrlString(value, baseUrl = import.meta.url) {
 	if (value === void 0 || value === null) return void 0;
-	if (isBlobLike(value)) return URL.createObjectURL(value);
 	if (value instanceof URL) return normalizeBrowserFileAssetUrl(value.href);
 	if (typeof value !== "string") return value;
 	try {
@@ -327,11 +333,37 @@ function toUrlString(value, baseUrl = import.meta.url) {
 		return normalizeBrowserFileAssetUrl(value);
 	}
 }
-function requireUrlString(value, name) {
-	if (value === void 0 || value === null) throw new TypeError(`${name} is required`);
+function optionalUrlString(value) {
+	if (value === void 0 || value === null) return void 0;
 	const url = toUrlString(value);
-	if (typeof url !== "string") throw new TypeError(`${name} must resolve to a string URL`);
+	if (typeof url !== "string") throw new TypeError("resource URL must resolve to a string URL");
 	return url;
+}
+function resolveAssetUrl(baseURL, fileName) {
+	return new URL(fileName, baseURL.endsWith("/") ? baseURL : `${baseURL}/`).href;
+}
+async function importCoreFactory(coreURL) {
+	const runtime = globalThis;
+	const module = runtime.__openUsdWasmImport ? await runtime.__openUsdWasmImport(coreURL) : await new Function("specifier", "return import(specifier)")(coreURL);
+	const factory = module.default ?? module.createOpenUsdPxrWasm;
+	if (typeof factory !== "function") throw new TypeError(`PXR.load() expected ${coreURL} to export an Emscripten Wasm factory`);
+	return factory;
+}
+async function resolvePxrAssets(options) {
+	const baseURL = optionalUrlString(options.baseURL);
+	if (baseURL) {
+		const resolvedCoreURL = resolveAssetUrl(baseURL, "openusd_pxr_wasm.js");
+		return {
+			core: await importCoreFactory(resolvedCoreURL),
+			coreURL: resolvedCoreURL,
+			wasmURL: resolveAssetUrl(baseURL, "openusd_pxr_wasm.wasm")
+		};
+	}
+	return {
+		core: await importCoreFactory(coreURL),
+		coreURL,
+		wasmURL
+	};
 }
 function fileUrlToPathString(value) {
 	const url = value instanceof URL ? value : new URL(value);
@@ -339,23 +371,10 @@ function fileUrlToPathString(value) {
 	return decodeURIComponent(url.pathname);
 }
 function toWorkerScript(value) {
-	if (value === void 0 || value === null || isBlobLike(value)) return value;
 	if (isNodeLike()) {
-		if (value instanceof URL) return fileUrlToPathString(value);
-		if (typeof value === "string" && value.startsWith("file:")) return fileUrlToPathString(value);
-		return value;
+		if (value.startsWith("file:")) return fileUrlToPathString(value);
 	}
-	return toUrlString(value);
-}
-function buildLocateFile({ wasmURL, workerURL, locateFile }) {
-	const resolvedWasmURL = requireUrlString(wasmURL, "wasmURL");
-	const resolvedWorkerURL = workerURL === void 0 ? void 0 : requireUrlString(workerURL, "workerURL");
-	return (path, prefix) => {
-		if (path.endsWith(".wasm")) return resolvedWasmURL;
-		if (resolvedWorkerURL && (path.endsWith(".worker.js") || path.endsWith(".worker.mjs"))) return String(resolvedWorkerURL);
-		if (locateFile) return locateFile(path, prefix);
-		return `${prefix || ""}${path}`;
-	};
+	return value;
 }
 function requireFs(module) {
 	if (!module.FS) throw new Error("openusd_pxr_wasm was built without FS export");
@@ -481,7 +500,7 @@ function buildFsHelpers(module) {
 		})
 	};
 }
-function buildPxr(module) {
+function buildPxrRuntime(module) {
 	const pxr = {
 		_module: module,
 		FS: buildFsHelpers(module),
@@ -495,27 +514,98 @@ function initializeOpenUsdRuntime(module) {
 	if (typeof module.PxrJsInitializeOpenUsdRuntime !== "function") throw new Error("openusd_pxr_wasm was built without OpenUSD runtime initialization support");
 	module.PxrJsInitializeOpenUsdRuntime();
 }
-async function createPxr(coreAssets, options = {}) {
-	if (!coreAssets || typeof coreAssets !== "object") throw new TypeError("createPxr requires @openusd-wasm/core assets");
-	if (typeof coreAssets.core !== "function") throw new TypeError("createPxr requires core.core to be a Wasm factory");
+async function loadPxrRuntime(options = {}) {
 	assertThreadedBrowserRuntime();
-	const { mainScriptUrlOrBlob, mounts = [], files, preRun, locateFile, ...wasmOptions } = options;
-	const workerURL = coreAssets.workerURL ?? coreAssets.coreURL;
-	wasmOptions.locateFile = buildLocateFile({
-		wasmURL: coreAssets.wasmURL,
-		workerURL,
-		locateFile
-	});
-	wasmOptions.ENV = withDefaultOpenUsdEnv(wasmOptions.ENV);
+	const { mounts = [], files, preRun, ENV } = options;
+	const coreAssets = await resolvePxrAssets(options);
+	const wasmOptions = {
+		locateFile: (path, prefix) => {
+			if (path.endsWith(".wasm")) return coreAssets.wasmURL;
+			if (path.endsWith(".worker.js") || path.endsWith(".worker.mjs")) return coreAssets.coreURL;
+			return `${prefix || ""}${path}`;
+		},
+		ENV: withDefaultOpenUsdEnv(ENV),
+		mainScriptUrlOrBlob: toWorkerScript(coreAssets.coreURL)
+	};
 	wasmOptions.preRun = [...normalizeCallbacks(preRun), (module) => {
 		for (const mount of mounts) mountFilesystem(module, mount);
 		installFiles(module, files);
 	}];
-	if (mainScriptUrlOrBlob !== void 0) wasmOptions.mainScriptUrlOrBlob = toWorkerScript(mainScriptUrlOrBlob);
-	else if (workerURL !== void 0) wasmOptions.mainScriptUrlOrBlob = toWorkerScript(workerURL);
 	const module = await coreAssets.core(wasmOptions);
 	initializeOpenUsdRuntime(module);
-	return buildPxr(module);
+	return buildPxrRuntime(module);
 }
+const runtimeKeys = [
+	"_module",
+	"FS",
+	"using",
+	"Gf",
+	"Sdf",
+	"Usd",
+	"UsdGeom",
+	"UsdPhysics",
+	"UsdSkel",
+	"UsdShade",
+	"UsdUtils"
+];
+function installRuntime(target, runtime) {
+	for (const key of runtimeKeys) Object.defineProperty(target, key, {
+		configurable: true,
+		enumerable: key !== "_module",
+		writable: true,
+		value: runtime[key]
+	});
+}
+function unloadedRuntimeAccess() {
+	throw new Error("PXR runtime is not loaded. Call await pxr.load() first.");
+}
+var PXR = class {
+	_loadPromise = null;
+	_runtime = null;
+	get _module() {
+		return this._runtime?._module ?? unloadedRuntimeAccess();
+	}
+	get FS() {
+		return this._runtime?.FS ?? unloadedRuntimeAccess();
+	}
+	get Gf() {
+		return this._runtime?.Gf ?? unloadedRuntimeAccess();
+	}
+	get Sdf() {
+		return this._runtime?.Sdf ?? unloadedRuntimeAccess();
+	}
+	get Usd() {
+		return this._runtime?.Usd ?? unloadedRuntimeAccess();
+	}
+	get UsdGeom() {
+		return this._runtime?.UsdGeom ?? unloadedRuntimeAccess();
+	}
+	get UsdPhysics() {
+		return this._runtime?.UsdPhysics ?? unloadedRuntimeAccess();
+	}
+	get UsdSkel() {
+		return this._runtime?.UsdSkel ?? unloadedRuntimeAccess();
+	}
+	get UsdShade() {
+		return this._runtime?.UsdShade ?? unloadedRuntimeAccess();
+	}
+	get UsdUtils() {
+		return this._runtime?.UsdUtils ?? unloadedRuntimeAccess();
+	}
+	get using() {
+		return this._runtime?.using ?? unloadedRuntimeAccess();
+	}
+	get loaded() {
+		return this._runtime !== null;
+	}
+	load(options = {}) {
+		if (!this._loadPromise) this._loadPromise = loadPxrRuntime(options).then((runtime) => {
+			this._runtime = runtime;
+			installRuntime(this, runtime);
+			return this;
+		});
+		return this._loadPromise;
+	}
+};
 //#endregion
-export { createPxr, createPxr as default };
+export { PXR, PXR as default };

@@ -1,6 +1,5 @@
 import os
 import shutil
-import uuid
 from pxr import Usd, Sdf
 from .utils import OpenUSDError, resolve_usd_paths
 
@@ -27,7 +26,7 @@ class LoadUSD:
         }
     
     @classmethod
-    def IS_CHANGED(self, file_path):
+    def IS_CHANGED(cls, file_path):
         return float("NaN")
 
     def load_usd(self, file_path):
@@ -35,6 +34,7 @@ class LoadUSD:
             raise OpenUSDError(f"file not found at {file_path}")
 
         stage = Usd.Stage.Open(file_path)
+        stage.Load()
 
         return ({"stage":stage},)
 
@@ -70,26 +70,26 @@ class SaveUSD:
         asset_folder = os.path.join(root_dir, "assets")
 
         if os.path.exists(asset_folder):
-            os.rmdir(asset_folder)
+            shutil.rmtree(asset_folder)
 
         copied = {}
 
-        layers = [l.identifier for l in stage.GetUsedLayers()]
+        layer_idents = [l.identifier for l in stage.GetUsedLayers()]
 
-        for layer in layers:
-            layer = Sdf.Layer.FindOrOpen(layer)
+        for ident in layer_idents:
+            lyr = Sdf.Layer.FindOrOpen(ident)
             
-            if layer is None or layer.anonymous:
+            if lyr is None or lyr.anonymous:
                 continue
 
-            for ref in layer.GetExternalReferences():
+            for ref in lyr.GetExternalReferences():
                 if not ref:
                     continue
 
-                abs_src = layer.ComputeAbsolutePath(ref)
+                abs_src = lyr.ComputeAbsolutePath(ref)
 
                 if not os.path.exists(abs_src):
-                    print(f"[SaveUSD] Warning: could not resolve '{ref}' from {layer.identifier}")
+                    print(f"[SaveUSD] Warning: could not resolve '{ref}' from {lyr.identifier}")
                     continue
 
                 if abs_src in copied:
@@ -102,7 +102,7 @@ class SaveUSD:
 
                     base, ext = os.path.splitext(ref_name)
                     n = 1
-                    while os.path.exists(dest) and not os.path.samefile(dest, abs_src) if os.path.exists(dest) else False:
+                    while os.path.exists(dest) and not os.path.samefile(dest, abs_src):
                         dest = os.path.join(asset_folder, f"{base}_{n}{ext}")
                         n += 1
 
@@ -110,13 +110,15 @@ class SaveUSD:
                     new_ref = dest
                     copied[abs_src] = new_ref
 
-                layer.UpdateExternalReference(ref, new_ref)
+                lyr.UpdateExternalReference(ref, new_ref)
 
     def save_usd(self, USD, output_path, make_paths_relative, package_assets, flatten_stage):
         stage = USD.get("stage", None)
 
         if stage is None:
             raise OpenUSDError("Invalid Stage")
+
+        stage.Load()
 
         out_dir = os.path.dirname(output_path)
         if out_dir:
@@ -132,10 +134,11 @@ class SaveUSD:
         root_layer.Export(output_path)
 
         saved_stage = Usd.Stage.Open(output_path)
+        saved_stage.Load()
         saved_root_layer = saved_stage.GetRootLayer()
 
         if package_assets:
-            self._package_assets(saved_stage, make_paths_relative)
+            self._package_assets(saved_stage)
 
         resolve_usd_paths(saved_root_layer, make_paths_relative)
         

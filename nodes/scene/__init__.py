@@ -5,7 +5,6 @@ from .light import CreateUSDLight
 from .material import ApplyUSDMaterial
 from .transform import TransformUSDPrim
 from .prim.configure import ConfigureUSDPrim
-from .prim.prim import GetUSDPrimUSDA, SetUSDPrimUSDA
 
 NODE_CLASS_MAPPINGS = {
     "SetUSDPrimDisplayColor": SetUSDPrimDisplayColor,
@@ -16,8 +15,6 @@ NODE_CLASS_MAPPINGS = {
     "ApplyUSDMaterial": ApplyUSDMaterial,
     "TransformUSDPrim": TransformUSDPrim,
     "ConfigureUSDPrim": ConfigureUSDPrim,
-    #"GetUSDPrimUSDA": GetUSDPrimUSDA,
-    #"SetUSDPrimUSDA": SetUSDPrimUSDA
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -29,6 +26,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ApplyUSDMaterial": "Apply USD Material",
     "TransformUSDPrim": "Transform USD Prim",
     "ConfigureUSDPrim": "Configure USD Prim",
-    #"GetUSDPrimUSDA": "Get USD Prim USDA",
-    #"SetUSDPrimUSDA": "Set USD Prim USDA"
 }

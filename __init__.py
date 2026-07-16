@@ -18,13 +18,17 @@ from .nodes import io as usd_io
 from .nodes import scene as usd_scene
 from .nodes import convert as usd_convert
 from .nodes import composition as usd_composition
+from .nodes import scripting as usd_scripting
+from .nodes import display as usd_display
 
 NODE_CLASS_MAPPINGS = {
     **usd_io.NODE_CLASS_MAPPINGS, 
     **usd_types.NODE_CLASS_MAPPINGS, 
     **usd_scene.NODE_CLASS_MAPPINGS,
     **usd_convert.NODE_CLASS_MAPPINGS,
-    **usd_composition.NODE_CLASS_MAPPINGS
+    **usd_composition.NODE_CLASS_MAPPINGS,
+    **usd_scripting.NODE_CLASS_MAPPINGS,
+    **usd_display.NODE_CLASS_MAPPINGS
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -32,7 +36,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **usd_types.NODE_DISPLAY_NAME_MAPPINGS, 
     **usd_scene.NODE_DISPLAY_NAME_MAPPINGS,
     **usd_convert.NODE_DISPLAY_NAME_MAPPINGS,
-    **usd_composition.NODE_DISPLAY_NAME_MAPPINGS
+    **usd_composition.NODE_DISPLAY_NAME_MAPPINGS,
+    **usd_scripting.NODE_DISPLAY_NAME_MAPPINGS,
+    **usd_display.NODE_DISPLAY_NAME_MAPPINGS
 }
 
 WEB_DIRECTORY = "web"
@@ -76,7 +82,7 @@ async def serve_usd_file(request):
     # Check if there is an in-memory stage update registered for this hash
     if usd_hash:
         try:
-            from nodes.view.viewer import IN_MEMORY_STAGES
+            from nodes.utils import IN_MEMORY_STAGES
             if usd_hash in IN_MEMORY_STAGES:
                 from pxr import Usd
                 usda_text = IN_MEMORY_STAGES[usd_hash]
@@ -202,6 +208,22 @@ def _prim_to_dict(prim):
 
 def _build_prim_payload(stage):
     pseudo_root = stage.GetPseudoRoot()
+    
+    stage_metadata = {}
+    try:
+        from pxr import UsdGeom
+        stage_metadata["upAxis"] = str(UsdGeom.GetStageUpAxis(stage))
+        stage_metadata["metersPerUnit"] = float(UsdGeom.GetStageMetersPerUnit(stage))
+    except Exception:
+        pass
+    try:
+        stage_metadata["startTimeCode"] = stage.GetStartTimeCode()
+        stage_metadata["endTimeCode"] = stage.GetEndTimeCode()
+        stage_metadata["timeCodesPerSecond"] = stage.GetTimeCodesPerSecond()
+        stage_metadata["defaultPrim"] = str(stage.GetDefaultPrim().GetPath()) if stage.GetDefaultPrim() else ""
+    except Exception:
+        pass
+    
     return {
         "name": "/",
         "path": "/",
@@ -209,7 +231,7 @@ def _build_prim_payload(stage):
         "active": True,
         "children": [_prim_to_dict(p) for p in pseudo_root.GetChildren()],
         "attributes": {},
-        "metadata": {},
+        "metadata": stage_metadata,
     }
 
 

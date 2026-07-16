@@ -18,7 +18,7 @@ class LayerBreakUSD:
         }
     
     @classmethod
-    def IS_CHANGED(self, USD):
+    def IS_CHANGED(cls, USD):
         return float("NaN")
 
     def break_layer(self, USD):

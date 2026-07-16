@@ -4,8 +4,6 @@ from ...types.utils import CONVERTERS, set_usd_data
 
 USD_TYPE_LIST = sorted(list(CONVERTERS.keys()))
 
-print(USD_TYPE_LIST)
-
 class GetUSDAttribute:
     CATEGORY = "3d/usd/prim"
     FUNCTION = "get_attribute"
