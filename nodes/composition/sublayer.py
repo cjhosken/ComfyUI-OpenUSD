@@ -4,20 +4,19 @@ class AddUSDSublayer:
     CATEGORY = "3d/usd/composition"
     FUNCTION = "add_sublayer"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "sublayer_path": ("STRING", {"default": "path/to/sublayer.usda", "path": True}),
                 "position": (["prepend", "append"], {"default": "prepend"}),
             }
         }
 
-    def add_sublayer(self, USD, sublayer_path, position="prepend"):
-        stage = USD.get("stage", None)
+    def add_sublayer(self, stage, sublayer_path, position="prepend"):
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -38,4 +37,4 @@ class AddUSDSublayer:
                 
         root_layer.subLayerPaths = sub_paths
             
-        return ({"stage": stage},)
+        return (stage,)

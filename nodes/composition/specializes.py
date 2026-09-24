@@ -5,20 +5,19 @@ class AddUSDSpecializes:
     CATEGORY = "3d/usd/composition"
     FUNCTION = "add_specialize"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "specializes_prim_path": ("STRING", {"default": "/_spec_Mesh"}),
             }
         }
 
-    def add_specialize(self, USD, prim_path, specializes_prim_path):
-        stage = USD.get("stage", None)
+    def add_specialize(self, stage, prim_path, specializes_prim_path):
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -45,5 +44,4 @@ class AddUSDSpecializes:
         for prim in matched_prims:
             prim.GetSpecializes().AddSpecialize(Sdf.Path(specializes_prim_path))
 
-
-        return ({"stage": stage},)
+        return (stage,)

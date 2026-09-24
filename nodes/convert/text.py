@@ -18,7 +18,7 @@ class TextToUSD:
     def text_to_usd(self, usda_text):
         stage = Usd.Stage.CreateInMemory()
         stage.GetRootLayer().ImportFromString(usda_text)
-        return ({"stage": stage},)
+        return (stage,)
     
 class USDtoText:
     CATEGORY = "3d/usd/convert"
@@ -31,10 +31,10 @@ class USDtoText:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
             }
         }
 
-    def usd_to_text(self, USD):
-        stage = USD.get("stage", None)
+    def usd_to_text(self, stage):
+        stage = stage.get("stage", None)
         return (stage.GetRootLayer().ExportToString(),)

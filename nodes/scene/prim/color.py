@@ -5,13 +5,13 @@ class SetUSDPrimDisplayColor:
     CATEGORY = "3d/usd/prim"
     FUNCTION = "set_display_color"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "display_color": ("COLOR", {"default": "#ffffffff"}),
             },
@@ -20,8 +20,7 @@ class SetUSDPrimDisplayColor:
             }
         }
 
-    def set_display_color(self, USD, prim_path, display_color, apply_to_children=False):
-        stage = USD.get("stage", None)
+    def set_display_color(self, stage, prim_path, display_color, apply_to_children=False):
         if not stage:
             return ({"stage": None},)
         
@@ -49,4 +48,4 @@ class SetUSDPrimDisplayColor:
                 mesh.GetDisplayColorAttr().Set([color])
                 mesh.GetDisplayOpacityAttr().Set([a])
 
-        return ({"stage": stage},)
+        return (stage,)

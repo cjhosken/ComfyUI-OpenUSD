@@ -4,13 +4,13 @@ class GetUSDPrimUSDA:
     CATEGORY = "3d/usd/prim"
     FUNCTION = "get_usda"
     RETURN_TYPES = ("USD", "STRING",)
-    RETURN_NAMES = ("USD", "usda_text",)
+    RETURN_NAMES = ("stage", "usda_text",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root"}),
             }
         }
@@ -36,20 +36,19 @@ class SetUSDPrimUSDA:
     CATEGORY = "3d/usd/prim"
     FUNCTION = "set_usda"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "usda_text": ("STRING", {"multiline": True}),
                 "mode": (["merge", "overwrite"], {"default": "merge"}),
             }
         }
 
-    def set_usda(self, USD, usda_text, mode="merge"):
-        stage = USD.get("stage", None)
+    def set_usda(self, stage, usda_text, mode="merge"):
         if stage is None:
             raise RuntimeError("Invalid USD stage")
 
@@ -67,4 +66,4 @@ class SetUSDPrimUSDA:
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
-        return ({"stage": stage},)
+        return (stage,)

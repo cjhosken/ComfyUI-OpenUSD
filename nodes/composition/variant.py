@@ -5,13 +5,13 @@ class AddUSDVariant:
     CATEGORY = "3d/usd/composition"
     FUNCTION = "add_variant"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "variant_set_name": ("STRING", {"default": "shadingVariant"}),
                 "variant_name": ("STRING", {"default": "default"}),
@@ -19,8 +19,7 @@ class AddUSDVariant:
             }
         }
 
-    def add_variant(self, USD, prim_path, variant_set_name, variant_name, set_selection=True):
-        stage = USD.get("stage", None)
+    def add_variant(self, stage, prim_path, variant_set_name, variant_name, set_selection=True):
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -51,5 +50,4 @@ class AddUSDVariant:
             if set_selection:
                 vset.SetVariantSelection(variant_name)
 
-
-        return ({"stage":stage},)
+        return (stage,)

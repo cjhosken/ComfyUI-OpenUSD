@@ -5,19 +5,18 @@ class SimpleUSDViewer:
     CATEGORY = "3d/usd/view"
     FUNCTION = "simple_view"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
     OUTPUT_NODE = True
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
             }
         }
 
-    def simple_view(self, USD):
-        stage = USD.get("stage", None)
+    def simple_view(self, stage):
         if stage is None:
             raise RuntimeError("Invalid USD stage")
         
@@ -36,7 +35,7 @@ class SimpleUSDViewer:
 
         return {
             "ui": {"usd_info": [anchor_path], "usda_text": [usda_text], "usd_hash": [usd_hash]},
-            "result": (USD,)
+            "result": (stage,)
         }
 
 NODE_CLASS_MAPPINGS = {

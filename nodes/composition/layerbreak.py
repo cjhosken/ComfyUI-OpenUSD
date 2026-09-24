@@ -7,24 +7,22 @@ class LayerBreakUSD:
     CATEGORY = "3d/usd/composition"
     FUNCTION = "break_layer"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
             }
         }
     
     @classmethod
-    def IS_CHANGED(cls, USD):
+    def IS_CHANGED(cls, stage):
         return float("NaN")
 
-    def break_layer(self, USD):
-        
-        stage = USD.get("stage", None)
-        
+    def break_layer(self, stage):
+                
         if stage is None:
             raise RuntimeError("Invalid USD stage")
         
@@ -40,4 +38,4 @@ class LayerBreakUSD:
         absolute_base_path = os.path.abspath(base_layer_path)
         new_stage.GetRootLayer().subLayerPaths.append(absolute_base_path)
         
-        return ({"stage": new_stage},)
+        return (new_stage,)

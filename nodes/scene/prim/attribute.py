@@ -14,15 +14,14 @@ class GetUSDAttribute:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "attribute_name": ("STRING", {"default": "myAttribute"}),
                 "is_primvar": ("BOOLEAN", {"default": True})
             }
         }
 
-    def get_attribute(self, USD, prim_path, attribute_name, is_primvar):
-        stage = USD.get("stage", None)
+    def get_attribute(self, stage, prim_path, attribute_name, is_primvar):
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -60,13 +59,13 @@ class SetUSDAttribute:
     CATEGORY = "3d/usd/prim"
     FUNCTION = "set_attribute"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "usd_attribute_name": ("STRING", {"default": "myAttribute"}),
                 "usd_attribute_type": (USD_TYPE_LIST, {"default": "vector3f"}),
@@ -77,8 +76,7 @@ class SetUSDAttribute:
         }
 
 
-    def set_attribute(self, USD, prim_path, usd_attribute_name, usd_attribute_type, is_primvar, value):
-        stage = USD.get("stage", None)
+    def set_attribute(self, stage, prim_path, usd_attribute_name, usd_attribute_type, is_primvar, value):
         if stage is None:
             raise RuntimeError("Invalid USD stage")
 
@@ -95,4 +93,4 @@ class SetUSDAttribute:
                 is_primvar
             )
 
-        return ({"stage":stage},)
+        return (stage,)

@@ -8,7 +8,7 @@ class LoadUSD:
     FUNCTION = "load_usd"
 
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -36,21 +36,21 @@ class LoadUSD:
         stage = Usd.Stage.Open(file_path)
         stage.Load()
 
-        return ({"stage":stage},)
+        return (stage,)
 
 class SaveUSD:
     CATEGORY = "3d/usd/io"
     FUNCTION = "save_usd"
 
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
     OUTPUT_NODE = True
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "output_path": (
                     "STRING",
                     {
@@ -112,8 +112,7 @@ class SaveUSD:
 
                 lyr.UpdateExternalReference(ref, new_ref)
 
-    def save_usd(self, USD, output_path, make_paths_relative, package_assets, flatten_stage):
-        stage = USD.get("stage", None)
+    def save_usd(self, stage, output_path, make_paths_relative, package_assets, flatten_stage):
 
         if stage is None:
             raise OpenUSDError("Invalid Stage")
@@ -144,7 +143,7 @@ class SaveUSD:
         
         saved_root_layer.Save()
 
-        return ({"stage":saved_stage},)
+        return (saved_stage,)
     
 
 NODE_CLASS_MAPPINGS = {

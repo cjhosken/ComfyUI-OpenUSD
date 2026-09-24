@@ -4,31 +4,26 @@ class USDPythonScript:
     CATEGORY = "3d/usd/utils"
     FUNCTION = "execute_script"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "usd_stage": ("USD",),
+                "stage": ("USD",),
                 "script": ("STRING", {"default": "# The stage is available as 'stage'\n\n# Example:\n# prim = stage.DefinePrim('/MyPrim', 'Xform')\n", "multiline": True}),
             }
         }
     
-    def execute_script(self, usd_stage, script):
-        stage = usd_stage["stage"]
-        
-        # Execute the script
-        
+    def execute_script(self, stage, script):        
         try:
-            # Create a dictionary for local variables
             local_vars = {"stage": stage, "Usd": Usd}
             exec(script, {}, local_vars)
         except Exception as e:
             print(f"Error executing USD script: {e}")
             raise e
             
-        return ({"stage": stage},)
+        return (stage,)
 
 NODE_CLASS_MAPPINGS = {
     "USDPythonScript": USDPythonScript,

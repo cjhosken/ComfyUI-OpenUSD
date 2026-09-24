@@ -7,14 +7,14 @@ class CreateUSDLight:
     CATEGORY = "3d/usd/scene"
     FUNCTION = "create_light"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         modes = ["create/set", "block", "ignore"]
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Lights/DomeLight"}),
                 "light_type": (["DomeLight", "DistantLight", "SphereLight", "RectLight"], {"default": "DomeLight"}),
                 "intensity": ("FLOAT", {"default": 1.0, "step": 0.05}),
@@ -41,10 +41,9 @@ class CreateUSDLight:
                 attr = prim.CreateAttribute(attr_name, type_name)
             attr.Set(value)
 
-    def create_light(self, USD, prim_path, light_type, intensity, intensity_mode,
+    def create_light(self, stage, prim_path, light_type, intensity, intensity_mode,
                      exposure, exposure_mode, color, color_mode,
                      texture_path="", texture_mode="ignore"):
-        stage = USD.get("stage", None)
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -86,5 +85,5 @@ class CreateUSDLight:
                 abs_tex = os.path.abspath(texture_path) if texture_path.strip() else ""
                 self.apply_attr(prim, "texture:file", Sdf.AssetPath(abs_tex) if abs_tex else "", texture_mode, Sdf.ValueTypeNames.Asset)
 
-        return ({"stage": stage},)
+        return (stage,)
 

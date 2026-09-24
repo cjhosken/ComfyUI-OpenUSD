@@ -6,13 +6,13 @@ class AddUSDReferenceOrPayload:
     CATEGORY = "3d/usd/composition"
     FUNCTION = "add_reference_or_payload"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "arc_type": (["reference", "payload"], {"default": "reference"}),
                 "file_path": ("STRING", {"default": "", "path": True}),
@@ -21,8 +21,7 @@ class AddUSDReferenceOrPayload:
             }
         }
 
-    def add_reference_or_payload(self, USD, prim_path, arc_type, file_path, target_prim_mode, referenced_prim_path=""):
-        stage = USD.get("stage", None)
+    def add_reference_or_payload(self, stage, prim_path, arc_type, file_path, target_prim_mode, referenced_prim_path=""):
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -55,4 +54,4 @@ class AddUSDReferenceOrPayload:
             else:
                 prim.GetPayloads().AddPayload(assetPath=ref_file, primPath=ref_prim_path_obj)
 
-        return ({"stage": stage},)
+        return (stage,)

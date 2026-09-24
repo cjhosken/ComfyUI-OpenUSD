@@ -4,13 +4,13 @@ class ConfigureUSDPrim:
     CATEGORY = "3d/usd/prim"
     FUNCTION = "configure_prim"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "active": ("BOOLEAN", {"default": True, "label": "Active"}),
                 "visibility": (["inherited", "visible", "invisible"], {"default": "inherited"}),
@@ -20,10 +20,8 @@ class ConfigureUSDPrim:
             }
         }
 
-    def configure_prim(self, USD, prim_path, active=True, visibility="inherited", 
+    def configure_prim(self, stage, prim_path, active=True, visibility="inherited", 
                        purpose="default", kind="", comment=""):
-
-        stage = USD.get("stage", None)
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -77,4 +75,4 @@ class ConfigureUSDPrim:
             except Exception as e:
                 print(f"[ConfigureUSDPrim] Error setting comment: {e}")
 
-        return ({"stage": stage},)
+        return (stage,)

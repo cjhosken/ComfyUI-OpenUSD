@@ -63,7 +63,7 @@ class ConvertUSD:
     CATEGORY = "3d/usd/convert"
     FUNCTION = "convert"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
     OUTPUT_NODE = True
 
     @classmethod
@@ -93,7 +93,7 @@ class ConvertUSD:
         from ..utils import register_in_memory_stage
         usda_text = stage.GetRootLayer().ExportToString()
         register_in_memory_stage(usda_text)
-        return ({"stage": stage},)
+        return (stage,)
 
 
 NODE_CLASS_MAPPINGS = {

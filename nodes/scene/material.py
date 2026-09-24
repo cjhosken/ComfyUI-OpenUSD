@@ -7,13 +7,13 @@ class ApplyUSDMaterial:
     CATEGORY = "3d/usd/scene"
     FUNCTION = "apply_material"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "material_prim_path": ("STRING", {"default": "/Root/Materials/Material"}),
                 "mesh_prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "diffuse_color": ("COLOR", {"default": "#cccccc"}),
@@ -30,8 +30,7 @@ class ApplyUSDMaterial:
             }
         }
 
-    def apply_material(self, USD, material_prim_path, mesh_prim_path, diffuse_color, roughness, metallic, emissive_color, opacity, ior, diffuse_texture="", roughness_texture="", metallic_texture=""):
-        stage = USD.get("stage", None)
+    def apply_material(self, stage, material_prim_path, mesh_prim_path, diffuse_color, roughness, metallic, emissive_color, opacity, ior, diffuse_texture="", roughness_texture="", metallic_texture=""):
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -113,4 +112,4 @@ class ApplyUSDMaterial:
         for prim in matched_prims:
             UsdShade.MaterialBindingAPI(prim).Bind(material)
 
-        return ({"stage":stage},)
+        return (stage,)

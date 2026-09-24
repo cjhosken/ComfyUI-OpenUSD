@@ -4,14 +4,14 @@ class CreateUSDCamera:
     CATEGORY = "3d/usd/scene"
     FUNCTION = "create_camera"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         modes = ["create/set", "block", "ignore"]
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Cameras/MainCamera"}),
                 "focal_length": ("FLOAT", {"default": 50.0, "step": 0.5}),
                 "focal_length_mode": (modes, {"default": "create/set"}),
@@ -39,11 +39,10 @@ class CreateUSDCamera:
                 attr = prim.CreateAttribute(attr_name, type_name)
             attr.Set(value)
 
-    def create_camera(self, USD, prim_path, focal_length, focal_length_mode,
+    def create_camera(self, stage, prim_path, focal_length, focal_length_mode,
                       horizontal_aperture, horizontal_aperture_mode,
                       vertical_aperture, vertical_aperture_mode,
                       near_clip, near_clip_mode, far_clip, far_clip_mode):
-        stage = USD.get("stage", None)
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -83,4 +82,4 @@ class CreateUSDCamera:
                     clip_attr = prim.CreateAttribute("clippingRange", Sdf.ValueTypeNames.Float2)
                 clip_attr.Set(curr_val)
 
-        return ({"stage":stage},)
+        return (stage,)

@@ -5,13 +5,13 @@ class TransformUSDPrim:
     CATEGORY = "3d/usd/scene"
     FUNCTION = "transform_prim"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "translation": ("VEC3",),
                 "rotation": ("VEC3",),
@@ -19,8 +19,7 @@ class TransformUSDPrim:
             }
         }
 
-    def transform_prim(self, USD, prim_path, translation, rotation, scale):
-        stage = USD.get("stage", None)
+    def transform_prim(self, stage, prim_path, translation, rotation, scale):
 
         if stage is None:
             raise RuntimeError("Invalid USD stage")
@@ -63,4 +62,4 @@ class TransformUSDPrim:
             scale_op = xformable.AddScaleOp()
             scale_op.Set(Gf.Vec3f(s_x, s_y, s_z))
 
-        return ({"stage":stage},)
+        return (stage,)
