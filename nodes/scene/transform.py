@@ -1,17 +1,30 @@
-from pxr import UsdGeom, Gf
-from ..utils import find_prims
+from pxr import Gf, UsdGeom
+from ..utils import OpenUSDError, find_prims
+
+
+def _unpack_vec3(val, default=(0.0, 0.0, 0.0)):
+    """Unpack a 3-element vector from a list, tuple, or dictionary payload."""
+    if isinstance(val, dict) and "data" in val:
+        val = val["data"]
+    if isinstance(val, (list, tuple)) and len(val) >= 3:
+        try:
+            return float(val[0]), float(val[1]), float(val[2])
+        except (ValueError, TypeError):
+            pass
+    return default
+
 
 class TransformUSDPrim:
     CATEGORY = "3d/usd/scene"
     FUNCTION = "transform_prim"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "translation": ("VEC3",),
                 "rotation": ("VEC3",),
@@ -19,38 +32,31 @@ class TransformUSDPrim:
             }
         }
 
-    def transform_prim(self, USD, prim_path, translation, rotation, scale):
-        stage = USD.get("stage", None)
-
+    def transform_prim(self, stage, prim_path: str, translation, rotation, scale):
         if stage is None:
-            raise RuntimeError("Invalid USD stage")
+            raise OpenUSDError("Invalid USD stage")
 
-        # Unpack VEC3 values safely
-        t_x, t_y, t_z = 0.0, 0.0, 0.0
-        if isinstance(translation, (list, tuple)) and len(translation) >= 3:
-            t_x, t_y, t_z = float(translation[0]), float(translation[1]), float(translation[2])
+        stage_obj = stage.get("stage") if isinstance(stage, dict) else stage
+        if stage_obj is None:
+            raise OpenUSDError("Invalid USD stage")
 
-        r_x, r_y, r_z = 0.0, 0.0, 0.0
-        if isinstance(rotation, (list, tuple)) and len(rotation) >= 3:
-            r_x, r_y, r_z = float(rotation[0]), float(rotation[1]), float(rotation[2])
-
-        s_x, s_y, s_z = 1.0, 1.0, 1.0
-        if isinstance(scale, (list, tuple)) and len(scale) >= 3:
-            s_x, s_y, s_z = float(scale[0]), float(scale[1]), float(scale[2])
-
+        # Unpack VEC3 values safely (supports list, tuple, and {"data": [...]} dict)
+        t_x, t_y, t_z = _unpack_vec3(translation, default=(0.0, 0.0, 0.0))
+        r_x, r_y, r_z = _unpack_vec3(rotation, default=(0.0, 0.0, 0.0))
+        s_x, s_y, s_z = _unpack_vec3(scale, default=(1.0, 1.0, 1.0))
 
         # Resolve target prims with wildcard matching
-        matched_prims = find_prims(stage, prim_path)
+        matched_prims = find_prims(stage_obj, prim_path)
 
         for prim in matched_prims:
             xformable = UsdGeom.Xformable(prim)
             if not xformable:
                 continue
-            
+
             # Clear existing transform operations (such as xformOp:transform matrix)
             # to prevent conflict and ensure absolute translate/rotate/scale are applied in standard TRS order.
             xformable.ClearXformOpOrder()
-            
+
             # Create and set Translation
             translate_op = xformable.AddTranslateOp()
             translate_op.Set(Gf.Vec3d(t_x, t_y, t_z))
@@ -63,4 +69,5 @@ class TransformUSDPrim:
             scale_op = xformable.AddScaleOp()
             scale_op.Set(Gf.Vec3f(s_x, s_y, s_z))
 
-        return ({"stage":stage},)
+        return (stage,)
+

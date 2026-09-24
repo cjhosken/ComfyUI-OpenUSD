@@ -1,10 +1,10 @@
-from .prim.attribute import GetUSDAttribute, SetUSDAttribute
-from .prim.color import SetUSDPrimDisplayColor
 from .camera import CreateUSDCamera
 from .light import CreateUSDLight
 from .material import ApplyUSDMaterial
-from .transform import TransformUSDPrim
+from .prim.attribute import GetUSDAttribute, SetUSDAttribute
+from .prim.color import SetUSDPrimDisplayColor
 from .prim.configure import ConfigureUSDPrim
+from .transform import TransformUSDPrim
 
 NODE_CLASS_MAPPINGS = {
     "SetUSDPrimDisplayColor": SetUSDPrimDisplayColor,
@@ -27,3 +27,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "TransformUSDPrim": "Transform USD Prim",
     "ConfigureUSDPrim": "Configure USD Prim",
 }
+

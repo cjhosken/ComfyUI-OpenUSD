@@ -3,25 +3,174 @@ import { USDViewport } from "./widgets/viewport.js";
 import { USDTreeView } from "./widgets/tree.js";
 import * as THREE from "https://esm.sh/three";
 
+/* ---- Shared Helpers ---------------------------------------------------- */
+
+function preventEventBubbling(element) {
+    const stopBubble = (e) => {
+        e.stopPropagation();
+        if (e.type === "wheel") e.preventDefault();
+    };
+    ["mousedown", "pointerdown", "touchstart", "wheel", "contextmenu"].forEach(ev => {
+        element.addEventListener(ev, stopBubble, { passive: ev !== "wheel" });
+    });
+}
+
+function findUpstreamUSDInfo(node) {
+    const usdSlot = node.inputs?.find(inp => inp.type === "USD");
+    if (!usdSlot || usdSlot.link === null) return null;
+
+    const link = node.graph?.links[usdSlot.link];
+    if (!link) return null;
+
+    const parentNode = node.graph?.getNodeById(link.origin_id);
+    if (!parentNode) return null;
+
+    if (parentNode.viewport && parentNode.viewport.currentModelPath) {
+        return {
+            filePath: parentNode.viewport.currentModelPath,
+            usdaText: parentNode.viewport.currentUsdaText,
+            usdHash: parentNode.viewport.currentUsdHash,
+        };
+    }
+
+    if (parentNode.last_execution_message) {
+        const path = parentNode.last_execution_message.usd_info?.[0];
+        const text = parentNode.last_execution_message.usda_text?.[0];
+        const hash = parentNode.last_execution_message.usd_hash?.[0];
+        if (path) return { filePath: path, usdaText: text, usdHash: hash };
+    }
+
+    return findUpstreamUSDInfo(parentNode);
+}
+
+function attachColorPicker(widget, node, onColorChange) {
+    widget.draw = function (ctx, n, widget_width, y, widget_height) {
+        ctx.save();
+        ctx.fillStyle = "#1e1e1f";
+        ctx.fillRect(15, y, widget_width - 30, widget_height - 4);
+        ctx.fillStyle = this.value || "#ffffff";
+        ctx.fillRect(20, y + 4, 30, widget_height - 12);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "10px monospace";
+        ctx.fillText((this.name ? this.name + ": " : "") + (this.value || ""), 60, y + 14);
+        ctx.restore();
+    };
+
+    widget.mouse = function (event, pos, n) {
+        if (event.type === "mousedown") {
+            const input = document.createElement("input");
+            input.type = "color";
+            input.value = this.value || "#ffffff";
+            input.style.position = "absolute";
+            input.style.opacity = "0";
+            document.body.appendChild(input);
+            input.click();
+            input.addEventListener("input", () => {
+                this.value = input.value;
+                if (onColorChange) onColorChange(input.value);
+                node.setDirtyCanvas(true, true);
+            });
+            input.addEventListener("change", () => {
+                this.value = input.value;
+                if (document.body.contains(input)) {
+                    document.body.removeChild(input);
+                }
+            });
+        }
+    };
+}
+
+function renderPassToDataUrl(renderer, scene, camera, W, H, materialOverride, viewport, meshMaterials, getCaptureMaterial) {
+    meshMaterials.forEach(({ mesh }) => {
+        mesh.visible = true;
+        mesh.material = materialOverride !== null ? materialOverride : getCaptureMaterial(mesh);
+        if (mesh.material) mesh.material.visible = true;
+    });
+
+    scene.traverse(child => {
+        if (child.userData?.isWireframeHelper) child.visible = false;
+    });
+
+    const origAspect = camera.aspect;
+    const origNear = camera.near;
+    const origFar = camera.far;
+    camera.aspect = W / H;
+
+    if (materialOverride instanceof THREE.MeshDepthMaterial && viewport.currentModel) {
+        const box = new THREE.Box3().setFromObject(viewport.currentModel);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const camDist = camera.position.distanceTo(center);
+        const radius = size.length() / 2;
+        camera.near = Math.max(0.01, camDist - radius);
+        camera.far = camDist + radius;
+    }
+    camera.updateProjectionMatrix();
+
+    const target = new THREE.WebGLRenderTarget(W, H, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.UnsignedByteType,
+    });
+
+    scene.overrideMaterial = null;
+    renderer.setRenderTarget(target);
+    renderer.render(scene, camera);
+
+    const pixels = new Uint8Array(W * H * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, W, H, pixels);
+    renderer.setRenderTarget(null);
+    target.dispose();
+
+    camera.aspect = origAspect;
+    camera.near = origNear;
+    camera.far = origFar;
+    camera.updateProjectionMatrix();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    const imgData = ctx.createImageData(W, H);
+
+    for (let row = 0; row < H; row++) {
+        const src = (H - 1 - row) * W * 4;
+        const dst = row * W * 4;
+        imgData.data.set(pixels.subarray(src, src + W * 4), dst);
+    }
+    ctx.putImageData(imgData, 0, 0);
+    return canvas.toDataURL("image/png");
+}
+
+async function uploadPassImage(dataUrl, filename) {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const formData = new FormData();
+    formData.append("image", blob, filename);
+    formData.append("overwrite", "true");
+    const uploadRes = await fetch("/upload/image", { method: "POST", body: formData });
+    const uploadJson = await uploadRes.json();
+    return uploadJson.name
+        ? (uploadJson.subfolder ? `${uploadJson.subfolder}/${uploadJson.name}` : uploadJson.name)
+        : filename;
+}
+
 async function captureAndUploadRange(node, startFrame, endFrame) {
     const viewport = node.viewport;
-    if (!viewport || !viewport.renderer || !viewport.scene || !viewport.camera) return;
+    if (!viewport?.renderer || !viewport.scene || !viewport.camera) return;
     if (!viewport.currentModel) {
         console.warn("[RenderUSD] No model loaded yet, skipping range capture.");
         return;
     }
 
-    // Freeze screen renders while rendering frame range in background
     viewport.isRenderingOffscreen = true;
+    const { renderer, scene, camera } = viewport;
 
-    const renderer = viewport.renderer;
-    const scene    = viewport.scene;
-    const camera   = viewport.camera;
-
-    const wWidth  = node.widgets?.find(w => w.name === "width");
+    const wWidth = node.widgets?.find(w => w.name === "width");
     const wHeight = node.widgets?.find(w => w.name === "height");
-    const W = wWidth  ? parseInt(wWidth.value)  || 512 : (viewport.container.clientWidth  || renderer.domElement.clientWidth  || 512);
-    const H = wHeight ? parseInt(wHeight.value) || 512 : (viewport.container.clientHeight || renderer.domElement.clientHeight || 512);
+    const W = wWidth ? parseInt(wWidth.value, 10) || 512 : (viewport.container.clientWidth || renderer.domElement.clientWidth || 512);
+    const H = wHeight ? parseInt(wHeight.value, 10) || 512 : (viewport.container.clientHeight || renderer.domElement.clientHeight || 512);
 
     const meshMaterials = [];
     scene.traverse(child => {
@@ -31,38 +180,25 @@ async function captureAndUploadRange(node, startFrame, endFrame) {
     });
 
     const getCaptureMaterial = (mesh) => {
-        const orig = mesh.userData.originalMaterial;
-        if (orig) return orig;
-        return new THREE.MeshStandardMaterial({ color: 0x888888 });
-    };
-
-    // Helper to upload a data URL to ComfyUI
-    const uploadImage = async (dataUrl, suffix) => {
-        const res  = await fetch(dataUrl);
-        const blob = await res.blob();
-        const filename = `render_usd_${node.id}_${suffix}.png`;
-        const formData = new FormData();
-        formData.append("image", blob, filename);
-        formData.append("overwrite", "true");
-        const uploadRes  = await fetch("/upload/image", { method: "POST", body: formData });
-        const uploadJson = await uploadRes.json();
-        return uploadJson.name
-            ? (uploadJson.subfolder ? `${uploadJson.subfolder}/${uploadJson.name}` : uploadJson.name)
-            : filename;
+        return mesh.userData.originalMaterial || new THREE.MeshStandardMaterial({ color: 0x888888 });
     };
 
     const originalFrame = viewport.currentFrame;
     if (node.progressOverlay) {
         node.progressOverlay.style.display = "flex";
-        node.progressText.textContent = `Preparing sequence...`;
+        node.progressText.textContent = "Preparing sequence...";
         node.progressBarFill.style.width = "0%";
     }
+
     try {
         const beautyFiles = [];
         const depthFiles = [];
         const normalFiles = [];
-
         const totalFrames = endFrame - startFrame + 1;
+
+        const normalMaterial = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+        const depthMaterial = new THREE.MeshDepthMaterial();
+
         for (let f = startFrame; f <= endFrame; f++) {
             const currentIdx = f - startFrame;
             const pct = Math.round((currentIdx / totalFrames) * 100);
@@ -74,146 +210,29 @@ async function captureAndUploadRange(node, startFrame, endFrame) {
             if (viewport.mixer) {
                 viewport.mixer.setTime(f / viewport.fps);
             }
-            // Small pause for state update
             await new Promise(r => setTimeout(r, 40));
 
-            // 1. Beauty Pass
-            meshMaterials.forEach(({ mesh }) => {
-                mesh.visible = true;
-                mesh.material = getCaptureMaterial(mesh);
-                if (mesh.material) mesh.material.visible = true;
-            });
-            scene.traverse(child => {
-                if (child.userData?.isWireframeHelper) child.visible = false;
-            });
-            const originalAspect = camera.aspect;
-            camera.aspect = W / H;
-            camera.updateProjectionMatrix();
+            const suffix = String(f).padStart(4, "0");
+            const beautyUrl = renderPassToDataUrl(renderer, scene, camera, W, H, null, viewport, meshMaterials, getCaptureMaterial);
+            const normalUrl = renderPassToDataUrl(renderer, scene, camera, W, H, normalMaterial, viewport, meshMaterials, getCaptureMaterial);
+            const depthUrl = renderPassToDataUrl(renderer, scene, camera, W, H, depthMaterial, viewport, meshMaterials, getCaptureMaterial);
 
-            const beautyTarget = new THREE.WebGLRenderTarget(W, H);
-            renderer.setRenderTarget(beautyTarget);
-            renderer.render(scene, camera);
-            const beautyPixels = new Uint8Array(W * H * 4);
-            renderer.readRenderTargetPixels(beautyTarget, 0, 0, W, H, beautyPixels);
-            renderer.setRenderTarget(null);
-            beautyTarget.dispose();
-
-            // Flip Y for texture mapping
-            const beautyCanvas = document.createElement('canvas');
-            beautyCanvas.width = W;
-            beautyCanvas.height = H;
-            const beautyCtx = beautyCanvas.getContext('2d');
-            const beautyImgData = beautyCtx.createImageData(W, H);
-            for (let y = 0; y < H; y++) {
-                const srcOffset = (H - 1 - y) * W * 4;
-                const destOffset = y * W * 4;
-                beautyImgData.data.set(beautyPixels.subarray(srcOffset, srcOffset + W * 4), destOffset);
-            }
-            beautyCtx.putImageData(beautyImgData, 0, 0);
-            const beautyUrl = beautyCanvas.toDataURL ? beautyCanvas.toDataURL('image/png') : beautyCanvas.toDataUrl('image/png');
-
-            // 2. Normal Pass
-            const normalMaterial = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
-            meshMaterials.forEach(({ mesh }) => {
-                mesh.visible = true;
-                mesh.material = normalMaterial;
-                if (mesh.material) mesh.material.visible = true;
-            });
-            const normalTarget = new THREE.WebGLRenderTarget(W, H);
-            renderer.setRenderTarget(normalTarget);
-            renderer.render(scene, camera);
-            const normalPixels = new Uint8Array(W * H * 4);
-            renderer.readRenderTargetPixels(normalTarget, 0, 0, W, H, normalPixels);
-            renderer.setRenderTarget(null);
-            normalTarget.dispose();
-
-            const normalCanvas = document.createElement('canvas');
-            normalCanvas.width = W;
-            normalCanvas.height = H;
-            const normalCtx = normalCanvas.getContext('2d');
-            const normalImgData = normalCtx.createImageData(W, H);
-            for (let y = 0; y < H; y++) {
-                const srcOffset = (H - 1 - y) * W * 4;
-                const destOffset = y * W * 4;
-                normalImgData.data.set(normalPixels.subarray(srcOffset, srcOffset + W * 4), destOffset);
-            }
-            normalCtx.putImageData(normalImgData, 0, 0);
-            const normalUrl = normalCanvas.toDataURL ? normalCanvas.toDataURL('image/png') : normalCanvas.toDataUrl('image/png');
-
-            // 3. Depth Pass
-            const originalNear = camera.near;
-            const originalFar = camera.far;
-            if (viewport.currentModel) {
-                const box = new THREE.Box3().setFromObject(viewport.currentModel);
-                const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3());
-                const camDist = camera.position.distanceTo(center);
-                const radius = size.length() / 2;
-                camera.near = Math.max(0.01, camDist - radius);
-                camera.far = camDist + radius;
-                camera.updateProjectionMatrix();
-            }
-
-            const depthMaterial = new THREE.MeshDepthMaterial();
-            meshMaterials.forEach(({ mesh }) => {
-                mesh.visible = true;
-                mesh.material = depthMaterial;
-                if (mesh.material) mesh.material.visible = true;
-            });
-            const depthTarget = new THREE.WebGLRenderTarget(W, H);
-            renderer.setRenderTarget(depthTarget);
-            renderer.render(scene, camera);
-            const depthPixels = new Uint8Array(W * H * 4);
-            renderer.readRenderTargetPixels(depthTarget, 0, 0, W, H, depthPixels);
-            renderer.setRenderTarget(null);
-            depthTarget.dispose();
-
-            camera.near = originalNear;
-            camera.far = originalFar;
-            camera.updateProjectionMatrix();
-
-            const depthCanvas = document.createElement('canvas');
-            depthCanvas.width = W;
-            depthCanvas.height = H;
-            const depthCtx = depthCanvas.getContext('2d');
-            const depthImgData = depthCtx.createImageData(W, H);
-            for (let y = 0; y < H; y++) {
-                const srcOffset = (H - 1 - y) * W * 4;
-                const destOffset = y * W * 4;
-                depthImgData.data.set(depthPixels.subarray(srcOffset, srcOffset + W * 4), destOffset);
-            }
-            depthCtx.putImageData(depthImgData, 0, 0);
-            const depthUrl = depthCanvas.toDataURL ? depthCanvas.toDataURL('image/png') : depthCanvas.toDataUrl('image/png');
-
-            camera.aspect = originalAspect;
-            camera.updateProjectionMatrix();
-
-            const beautyFile = await uploadImage(beautyUrl, `beauty_${f}`);
-            const depthFile  = await uploadImage(depthUrl,  `depth_${f}`);
-            const normalFile = await uploadImage(normalUrl, `normal_${f}`);
-
-            beautyFiles.push(beautyFile);
-            depthFiles.push(depthFile);
-            normalFiles.push(normalFile);
+            beautyFiles.push(await uploadPassImage(beautyUrl, `render_usd_${node.id}_beauty_${suffix}.png`));
+            depthFiles.push(await uploadPassImage(depthUrl, `render_usd_${node.id}_depth_${suffix}.png`));
+            normalFiles.push(await uploadPassImage(normalUrl, `render_usd_${node.id}_normal_${suffix}.png`));
         }
 
         const wBeauty = node.widgets?.find(w => w.name === "beauty_file");
-        if (wBeauty) wBeauty.value = beautyFiles.join(",");
-        const wDepth  = node.widgets?.find(w => w.name === "depth_file");
-        if (wDepth)  wDepth.value  = depthFiles.join(",");
+        if (wBeauty) wBeauty.value = JSON.stringify(beautyFiles);
+        const wDepth = node.widgets?.find(w => w.name === "depth_file");
+        if (wDepth) wDepth.value = JSON.stringify(depthFiles);
         const wNormal = node.widgets?.find(w => w.name === "normal_file");
-        if (wNormal) wNormal.value = normalFiles.join(",");
+        if (wNormal) wNormal.value = JSON.stringify(normalFiles);
 
-        if (viewport.mixer) {
-            viewport.mixer.setTime(originalFrame / viewport.fps);
-        }
-        viewport.isRenderingOffscreen = false;
-        renderer.render(scene, camera);
-
-        console.log("[RenderUSD] Captured range:", { beautyFiles, depthFiles, normalFiles });
+        console.log(`[RenderUSD] Range [${startFrame}..${endFrame}] captured (${totalFrames} frames)`);
         node.setDirtyCanvas(true, true);
     } catch (err) {
-        console.error("[RenderUSD] Range render capture failed:", err);
+        console.error("[RenderUSD] Range capture failed:", err);
     } finally {
         if (viewport.mixer) {
             viewport.mixer.setTime(originalFrame / viewport.fps);
@@ -227,26 +246,20 @@ async function captureAndUploadRange(node, startFrame, endFrame) {
     }
 }
 
-/* ---- Capture and upload beauty/depth/normal passes ---------------- */
 async function captureAndUploadRender(node) {
     const viewport = node.viewport;
-    if (!viewport || !viewport.renderer || !viewport.scene || !viewport.camera) return;
+    if (!viewport?.renderer || !viewport.scene || !viewport.camera) return;
     if (!viewport.currentModel) {
         console.warn("[RenderUSD] No model loaded yet, skipping capture.");
         return;
     }
 
-    const renderer = viewport.renderer;
-    const scene    = viewport.scene;
-    const camera   = viewport.camera;
-
-    // Read exact target dimensions from node widgets if present (RenderUSD), falling back to container size (PreviewUSD)
-    const wWidth  = node.widgets?.find(w => w.name === "width");
+    const { renderer, scene, camera } = viewport;
+    const wWidth = node.widgets?.find(w => w.name === "width");
     const wHeight = node.widgets?.find(w => w.name === "height");
-    const W = wWidth  ? parseInt(wWidth.value)  || 512 : (viewport.container.clientWidth  || renderer.domElement.clientWidth  || 512);
-    const H = wHeight ? parseInt(wHeight.value) || 512 : (viewport.container.clientHeight || renderer.domElement.clientHeight || 512);
+    const W = wWidth ? parseInt(wWidth.value, 10) || 512 : (viewport.container.clientWidth || renderer.domElement.clientWidth || 512);
+    const H = wHeight ? parseInt(wHeight.value, 10) || 512 : (viewport.container.clientHeight || renderer.domElement.clientHeight || 512);
 
-    // Collect every mesh and its current material so we can restore them after capture
     const meshMaterials = [];
     scene.traverse(child => {
         if (child.isMesh) {
@@ -254,113 +267,24 @@ async function captureAndUploadRender(node) {
         }
     });
 
-    // Get the per-mesh "original" (pre-wireframe) material, falling back to a grey standard
     const getCaptureMaterial = (mesh) => {
-        const orig = mesh.userData.originalMaterial;
-        if (orig) return orig;
-        return new THREE.MeshStandardMaterial({ color: 0x888888 });
-    };
-
-    // Helper: render into an offscreen target at W×H and return a PNG data URL
-    const renderToDataUrl = (materialOverride) => {
-        // Make every mesh visible with the correct material for this pass
-        meshMaterials.forEach(({ mesh }) => {
-            mesh.visible = true;
-            mesh.material = materialOverride !== null ? materialOverride : getCaptureMaterial(mesh);
-            if (mesh.material) mesh.material.visible = true;
-        });
-
-        // Hide wireframe helpers — they're per-mesh children, not in meshMaterials
-        scene.traverse(child => {
-            if (child.userData?.isWireframeHelper) child.visible = false;
-        });
-
-        // Temporary aspect ratio and tight clipping planes update for camera to auto-normalize depth
-        const originalAspect = camera.aspect;
-        const originalNear = camera.near;
-        const originalFar = camera.far;
-        camera.aspect = W / H;
-        if (materialOverride instanceof THREE.MeshDepthMaterial && viewport.currentModel) {
-            const box = new THREE.Box3().setFromObject(viewport.currentModel);
-            const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
-            const camDist = camera.position.distanceTo(center);
-            const radius = size.length() / 2;
-            camera.near = Math.max(0.01, camDist - radius);
-            camera.far = camDist + radius;
-        }
-        camera.updateProjectionMatrix();
-
-        const target = new THREE.WebGLRenderTarget(W, H, {
-            minFilter: THREE.LinearFilter,
-            magFilter: THREE.LinearFilter,
-            format: THREE.RGBAFormat,
-            type: THREE.UnsignedByteType,
-        });
-
-        scene.overrideMaterial = null; // let per-mesh materials drive the pass
-        renderer.setRenderTarget(target);
-        renderer.render(scene, camera);
-
-        const buf = new Uint8Array(W * H * 4);
-        renderer.readRenderTargetPixels(target, 0, 0, W, H, buf);
-        renderer.setRenderTarget(null);
-        target.dispose();
-
-        // Restore original camera aspect ratio and clipping planes
-        camera.aspect = originalAspect;
-        camera.near = originalNear;
-        camera.far = originalFar;
-        camera.updateProjectionMatrix();
-
-        // WebGL is bottom-to-top; flip vertically
-        const flipped = new Uint8Array(W * H * 4);
-        for (let row = 0; row < H; row++) {
-            const src = (H - 1 - row) * W * 4;
-            flipped.set(buf.subarray(src, src + W * 4), row * W * 4);
-        }
-
-        const canvas2d = document.createElement("canvas");
-        canvas2d.width  = W;
-        canvas2d.height = H;
-        const ctx = canvas2d.getContext("2d");
-        const imgData = ctx.createImageData(W, H);
-        imgData.data.set(flipped);
-        ctx.putImageData(imgData, 0, 0);
-        return canvas2d.toDataURL("image/png");
-    };
-
-    // Helper to upload a data URL to ComfyUI
-    const uploadImage = async (dataUrl, suffix) => {
-        const res  = await fetch(dataUrl);
-        const blob = await res.blob();
-        const filename = `render_usd_${node.id}_${suffix}.png`;
-        const formData = new FormData();
-        formData.append("image", blob, filename);
-        formData.append("overwrite", "true");
-        const uploadRes  = await fetch("/upload/image", { method: "POST", body: formData });
-        const uploadJson = await uploadRes.json();
-        return uploadJson.name
-            ? (uploadJson.subfolder ? `${uploadJson.subfolder}/${uploadJson.name}` : uploadJson.name)
-            : filename;
+        return mesh.userData.originalMaterial || new THREE.MeshStandardMaterial({ color: 0x888888 });
     };
 
     try {
-        // Beauty: each mesh rendered with its original material
-        const beautyUrl = renderToDataUrl(null);
-        // Normal: Three.js MeshNormalMaterial override
-        const normalUrl = renderToDataUrl(new THREE.MeshNormalMaterial({ side: THREE.DoubleSide }));
-        // Depth: Three.js MeshDepthMaterial override
-        const depthUrl  = renderToDataUrl(new THREE.MeshDepthMaterial());
+        const beautyUrl = renderPassToDataUrl(renderer, scene, camera, W, H, null, viewport, meshMaterials, getCaptureMaterial);
+        const normalUrl = renderPassToDataUrl(renderer, scene, camera, W, H, new THREE.MeshNormalMaterial({ side: THREE.DoubleSide }), viewport, meshMaterials, getCaptureMaterial);
+        const depthUrl = renderPassToDataUrl(renderer, scene, camera, W, H, new THREE.MeshDepthMaterial(), viewport, meshMaterials, getCaptureMaterial);
 
-        // Restore each mesh to whatever material applyShading had set
+        // Restore materials
         meshMaterials.forEach(({ mesh, mat }) => {
             mesh.material = mat;
-            if (mat) mat.visible = mesh.userData.originalMaterial !== undefined
-                ? (mesh.userData.wireframeLines?.visible ? false : true)
-                : true;
+            if (mat) {
+                mat.visible = mesh.userData.originalMaterial !== undefined
+                    ? !mesh.userData.wireframeLines?.visible
+                    : true;
+            }
         });
-        // Restore wireframe helper visibility
         scene.traverse(child => {
             if (child.userData?.isWireframeHelper) {
                 child.visible = viewport.shadingMode === "wireframe";
@@ -368,14 +292,14 @@ async function captureAndUploadRender(node) {
         });
         renderer.render(scene, camera);
 
-        const beautyFile = await uploadImage(beautyUrl, "beauty");
-        const depthFile  = await uploadImage(depthUrl,  "depth");
-        const normalFile = await uploadImage(normalUrl, "normal");
+        const beautyFile = await uploadPassImage(beautyUrl, `render_usd_${node.id}_beauty.png`);
+        const depthFile = await uploadPassImage(depthUrl, `render_usd_${node.id}_depth.png`);
+        const normalFile = await uploadPassImage(normalUrl, `render_usd_${node.id}_normal.png`);
 
         const wBeauty = node.widgets?.find(w => w.name === "beauty_file");
         if (wBeauty) wBeauty.value = beautyFile;
-        const wDepth  = node.widgets?.find(w => w.name === "depth_file");
-        if (wDepth)  wDepth.value  = depthFile;
+        const wDepth = node.widgets?.find(w => w.name === "depth_file");
+        if (wDepth) wDepth.value = depthFile;
         const wNormal = node.widgets?.find(w => w.name === "normal_file");
         if (wNormal) wNormal.value = normalFile;
 
@@ -383,7 +307,6 @@ async function captureAndUploadRender(node) {
         node.setDirtyCanvas(true, true);
     } catch (err) {
         console.error("[RenderUSD] Render capture failed:", err);
-        // Always restore meshes even on failure
         meshMaterials.forEach(({ mesh, mat }) => { mesh.material = mat; });
     }
 }
@@ -401,6 +324,10 @@ async function captureAndUploadRender(node) {
 
 const NODE_W = 420;
 const NODE_H = 600;
+
+/* ---- Pixar USD Socket Colors ------------------------------------------- */
+const USD_SOCKET_COLOR = "#0b8ce9"; // Pixar OpenUSD Blue
+const USD_VALUE_SOCKET_COLOR = "#31b9f4"; // Pixar OpenUSD Sky Blue
 
 /* ---- Global fetch interceptor for relative USD references ------------- */
 const originalFetch = window.fetch;
@@ -455,6 +382,45 @@ window.fetch = async function(resource, init) {
 
 app.registerExtension({
     name: "USD.Viewer",
+
+    async setup(app) {
+        // Register connection & wire colors for USD types in LiteGraph
+        if (app.canvas) {
+            app.canvas.default_connection_color_byType = app.canvas.default_connection_color_byType || {};
+            app.canvas.default_connection_color_byType["USD"] = USD_SOCKET_COLOR;
+            app.canvas.default_connection_color_byType["USD_VALUE"] = USD_VALUE_SOCKET_COLOR;
+        }
+
+        if (typeof LGraphCanvas !== "undefined") {
+            LGraphCanvas.link_type_colors = LGraphCanvas.link_type_colors || {};
+            LGraphCanvas.link_type_colors["USD"] = USD_SOCKET_COLOR;
+            LGraphCanvas.link_type_colors["USD_VALUE"] = USD_VALUE_SOCKET_COLOR;
+        }
+    },
+
+    async nodeCreated(node) {
+        for (const slot of [...(node.inputs || []), ...(node.outputs || [])]) {
+            if (slot.type === "USD") {
+                slot.color_on = USD_SOCKET_COLOR;
+                slot.color_off = USD_SOCKET_COLOR;
+            } else if (slot.type === "USD_VALUE") {
+                slot.color_on = USD_VALUE_SOCKET_COLOR;
+                slot.color_off = USD_VALUE_SOCKET_COLOR;
+            }
+        }
+    },
+
+    async loadedGraphNode(node) {
+        for (const slot of [...(node.inputs || []), ...(node.outputs || [])]) {
+            if (slot.type === "USD") {
+                slot.color_on = USD_SOCKET_COLOR;
+                slot.color_off = USD_SOCKET_COLOR;
+            } else if (slot.type === "USD_VALUE") {
+                slot.color_on = USD_VALUE_SOCKET_COLOR;
+                slot.color_off = USD_VALUE_SOCKET_COLOR;
+            }
+        }
+    },
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
 
@@ -606,13 +572,7 @@ app.registerExtension({
                 widget.serializeValue = () => undefined;
 
                 /* ---- Prevent event bubbling ----------------------- */
-                const stopBubble = (e) => {
-                    e.stopPropagation();
-                    if (e.type === "wheel") e.preventDefault();
-                };
-                ['mousedown', 'pointerdown', 'touchstart', 'wheel', 'contextmenu'].forEach(ev => {
-                    container.addEventListener(ev, stopBubble, { passive: ev !== "wheel" });
-                });
+                preventEventBubbling(container);
 
                 /* ---- Instantiate viewport -------------------------- */
                 const viewport = new USDViewport(viewportContainer, {
@@ -691,41 +651,22 @@ app.registerExtension({
                 this.bgcolor = colors.bgcolor;
             }
 
+            // Apply Pixar USD socket colors
+            for (const slot of [...(this.inputs || []), ...(this.outputs || [])]) {
+                if (slot.type === "USD") {
+                    slot.color_on = USD_SOCKET_COLOR;
+                    slot.color_off = USD_SOCKET_COLOR;
+                } else if (slot.type === "USD_VALUE") {
+                    slot.color_on = USD_VALUE_SOCKET_COLOR;
+                    slot.color_off = USD_VALUE_SOCKET_COLOR;
+                }
+            }
+
             // 1. General color picker mapping for widgets named display_color, ending in _color, or of type COLOR
             setTimeout(() => {
                 this.widgets?.forEach(w => {
                     if (w.name === "display_color" || w.name.endsWith("_color") || w.type === "COLOR") {
-                        w.draw = function(ctx, node, widget_width, y, widget_height) {
-                            ctx.save();
-                            ctx.fillStyle = "#1e1e1f";
-                            ctx.fillRect(15, y, widget_width - 30, widget_height - 4);
-                            ctx.fillStyle = this.value || "#ffffff";
-                            ctx.fillRect(20, y + 4, 30, widget_height - 12);
-                            ctx.fillStyle = "#ffffff";
-                            ctx.font = "10px monospace";
-                            ctx.fillText(this.name + ": " + this.value, 60, y + 14);
-                            ctx.restore();
-                        };
-
-                        w.mouse = function(event, pos, node) {
-                            if (event.type === "mousedown") {
-                                const input = document.createElement("input");
-                                input.type = "color";
-                                input.value = this.value;
-                                input.style.position = "absolute";
-                                input.style.opacity = 0;
-                                document.body.appendChild(input);
-                                input.click();
-                                input.addEventListener("input", () => {
-                                    this.value = input.value;
-                                    node.setDirtyCanvas(true, true);
-                                });
-                                input.addEventListener("change", () => {
-                                    this.value = input.value;
-                                    document.body.removeChild(input);
-                                });
-                            }
-                        };
+                        attachColorPicker(w, this);
                     }
                 });
             }, 100);
@@ -761,42 +702,12 @@ app.registerExtension({
 
                 const initialHex = rgbToHex(wR.value ?? 1, wG.value ?? 1, wB.value ?? 1);
                 const colorWidget = this.addWidget("button", "color", initialHex, () => {});
-                
-                colorWidget.draw = function(ctx, node, widget_width, y, widget_height) {
-                    ctx.save();
-                    ctx.fillStyle = "#1e1e1f";
-                    ctx.fillRect(15, y, widget_width - 30, widget_height - 4);
-                    ctx.fillStyle = this.value || "#ffffff";
-                    ctx.fillRect(20, y + 4, 30, widget_height - 12);
-                    ctx.fillStyle = "#ffffff";
-                    ctx.font = "10px monospace";
-                    ctx.fillText("color: " + this.value, 60, y + 14);
-                    ctx.restore();
-                };
-
-                colorWidget.mouse = function(event, pos, node) {
-                    if (event.type === "mousedown") {
-                        const input = document.createElement("input");
-                        input.type = "color";
-                        input.value = this.value;
-                        input.style.position = "absolute";
-                        input.style.opacity = 0;
-                        document.body.appendChild(input);
-                        input.click();
-                        input.addEventListener("input", () => {
-                            this.value = input.value;
-                            const [r, g, b] = hexToRgb(input.value);
-                            wR.value = r;
-                            wG.value = g;
-                            wB.value = b;
-                            node.setDirtyCanvas(true, true);
-                        });
-                        input.addEventListener("change", () => {
-                            this.value = input.value;
-                            document.body.removeChild(input);
-                        });
-                    }
-                };
+                attachColorPicker(colorWidget, this, (hex) => {
+                    const [r, g, b] = hexToRgb(hex);
+                    wR.value = r;
+                    wG.value = g;
+                    wB.value = b;
+                });
             }
         };
 
@@ -876,13 +787,7 @@ app.registerExtension({
                 widget.serializeValue = () => undefined;
 
                 /* ---- Prevent event bubbling ----------------------- */
-                const stopBubble = (e) => {
-                    e.stopPropagation();
-                    if (e.type === "wheel") e.preventDefault();
-                };
-                ['mousedown', 'pointerdown', 'touchstart', 'wheel', 'contextmenu'].forEach(ev => {
-                    container.addEventListener(ev, stopBubble, { passive: ev !== "wheel" });
-                });
+                preventEventBubbling(container);
 
                 /* ---- Instantiate Viewport ------------------------- */
                 const viewport = new USDViewport(viewportContainer, {
@@ -893,34 +798,7 @@ app.registerExtension({
                 this.viewport = viewport;
                 this.viewportContainer = viewportContainer;
 
-                // Recursive helper to traverse upstream to find the USD info/path
-                const findUpstreamUSDInfo = (node) => {
-                    const usdSlot = node.inputs?.find(inp => inp.type === "USD");
-                    if (!usdSlot || usdSlot.link === null) return null;
-                    
-                    const link = node.graph?.links[usdSlot.link];
-                    if (!link) return null;
-                    
-                    const parentNode = node.graph?.getNodeById(link.origin_id);
-                    if (!parentNode) return null;
-                    
-                    if (parentNode.viewport && parentNode.viewport.currentModelPath) {
-                        return {
-                            filePath: parentNode.viewport.currentModelPath,
-                            usdaText: parentNode.viewport.currentUsdaText,
-                            usdHash: parentNode.viewport.currentUsdHash
-                        };
-                    }
-                    
-                    if (parentNode.last_execution_message) {
-                        const path = parentNode.last_execution_message.usd_info?.[0];
-                        const text = parentNode.last_execution_message.usda_text?.[0];
-                        const hash = parentNode.last_execution_message.usd_hash?.[0];
-                        if (path) return { filePath: path, usdaText: text, usdHash: hash };
-                    }
-                    
-                    return findUpstreamUSDInfo(parentNode);
-                };
+
 
                 // Sync loaded model from upstream USD nodes
                 const syncModelFromUpstream = () => {

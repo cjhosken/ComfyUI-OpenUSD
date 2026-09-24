@@ -1,6 +1,6 @@
-import os
 import numpy as np
-from pxr import Usd, UsdGeom, Sdf, Gf, Vt
+from pxr import Gf, Sdf, Usd, UsdGeom
+from ..utils import OpenUSDError, register_in_memory_stage
 
 try:
     import trimesh
@@ -10,7 +10,7 @@ except ImportError:
 
 
 def _trimesh_to_usd_stage(mesh_or_scene, stage=None, prim_path="/World"):
-    """Convert a trimesh Mesh or Scene to a new USD Stage."""
+    """Convert a trimesh Mesh or Scene to a USD Stage."""
     if stage is None:
         stage = Usd.Stage.CreateInMemory()
 
@@ -26,7 +26,8 @@ def _trimesh_to_usd_stage(mesh_or_scene, stage=None, prim_path="/World"):
     return stage
 
 
-def _add_mesh_to_stage(stage, mesh, name, prim_path):
+def _add_mesh_to_stage(stage, mesh, name: str, prim_path: str):
+    """Add a trimesh.Trimesh geometry as a UsdGeom.Mesh prim."""
     safe_name = name.replace("/", "_").replace(" ", "_")
     path = f"{prim_path}/{safe_name}" if prim_path != "/" else f"/{safe_name}"
     usd_mesh = UsdGeom.Mesh.Define(stage, path)
@@ -50,7 +51,7 @@ def _add_mesh_to_stage(stage, mesh, name, prim_path):
         )
         usd_mesh.SetNormalsInterpolation(UsdGeom.Tokens.vertex)
 
-    if hasattr(mesh.visual, 'uv') and mesh.visual.uv is not None:
+    if hasattr(mesh.visual, "uv") and mesh.visual.uv is not None:
         uvs = mesh.visual.uv
         primvars_api = UsdGeom.PrimvarsAPI(usd_mesh.GetPrim())
         uv_primvar = primvars_api.CreatePrimvar(
@@ -60,10 +61,12 @@ def _add_mesh_to_stage(stage, mesh, name, prim_path):
 
 
 class ConvertUSD:
+    """Convert ComfyUI MESH geometry into a USD stage."""
+
     CATEGORY = "3d/usd/convert"
     FUNCTION = "convert"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
     OUTPUT_NODE = True
 
     @classmethod
@@ -76,24 +79,32 @@ class ConvertUSD:
 
     def convert(self, mesh):
         if not HAS_TRIMESH:
-            raise RuntimeError("trimesh is required: pip install trimesh")
+            raise OpenUSDError("The 'trimesh' library is required. Install via: pip install trimesh")
 
         if mesh is None or not hasattr(mesh, "vertices"):
-            raise RuntimeError("MESH input required (ComfyUI geometry MESH object).")
+            raise OpenUSDError("MESH input required (ComfyUI geometry MESH object).")
 
-        verts = mesh.vertices[0].cpu().numpy().astype(np.float64) if mesh.vertices.dim() == 3 else mesh.vertices.cpu().numpy().astype(np.float64)
+        if mesh.vertices.dim() == 3:
+            verts = mesh.vertices[0].cpu().numpy().astype(np.float64)
+        else:
+            verts = mesh.vertices.cpu().numpy().astype(np.float64)
+
         if mesh.faces is not None:
-            faces = mesh.faces[0].cpu().numpy().astype(np.int64) if mesh.faces.dim() == 3 else mesh.faces.cpu().numpy().astype(np.int64)
+            if mesh.faces.dim() == 3:
+                faces = mesh.faces[0].cpu().numpy().astype(np.int64)
+            else:
+                faces = mesh.faces.cpu().numpy().astype(np.int64)
         else:
             faces = None
 
-        tmp_mesh = trimesh.Trimesh(vertices=verts, faces=faces if faces is not None else None, process=False)
+        tmp_mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
         tmp_mesh.metadata["name"] = "Mesh"
         stage = _trimesh_to_usd_stage(tmp_mesh)
-        from ..utils import register_in_memory_stage
+
         usda_text = stage.GetRootLayer().ExportToString()
         register_in_memory_stage(usda_text)
-        return ({"stage": stage},)
+
+        return (stage,)
 
 
 NODE_CLASS_MAPPINGS = {

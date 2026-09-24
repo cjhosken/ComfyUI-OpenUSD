@@ -1,20 +1,20 @@
-from pxr import UsdLux, Gf, Sdf
 import os
-from ..utils import hex_to_rgba
+from pxr import Gf, Sdf, UsdLux
+from ..utils import OpenUSDError, hex_to_rgba
 
 
 class CreateUSDLight:
     CATEGORY = "3d/usd/scene"
     FUNCTION = "create_light"
     RETURN_TYPES = ("USD",)
-    RETURN_NAMES = ("USD",)
+    RETURN_NAMES = ("stage",)
 
     @classmethod
     def INPUT_TYPES(cls):
         modes = ["create/set", "block", "ignore"]
         return {
             "required": {
-                "USD": ("USD",),
+                "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Lights/DomeLight"}),
                 "light_type": (["DomeLight", "DistantLight", "SphereLight", "RectLight"], {"default": "DomeLight"}),
                 "intensity": ("FLOAT", {"default": 1.0, "step": 0.05}),
@@ -28,7 +28,7 @@ class CreateUSDLight:
             }
         }
 
-    def apply_attr(self, prim, attr_name, value, mode, type_name):
+    def apply_attr(self, prim, attr_name: str, value, mode: str, type_name):
         if mode == "ignore":
             return
         attr = prim.GetAttribute(attr_name)
@@ -41,28 +41,41 @@ class CreateUSDLight:
                 attr = prim.CreateAttribute(attr_name, type_name)
             attr.Set(value)
 
-    def create_light(self, USD, prim_path, light_type, intensity, intensity_mode,
-                     exposure, exposure_mode, color, color_mode,
-                     texture_path="", texture_mode="ignore"):
-        stage = USD.get("stage", None)
-
+    def create_light(
+        self,
+        stage,
+        prim_path: str,
+        light_type: str,
+        intensity: float,
+        intensity_mode: str,
+        exposure: float,
+        exposure_mode: str,
+        color: str,
+        color_mode: str,
+        texture_path: str = "",
+        texture_mode: str = "ignore",
+    ):
         if stage is None:
-            raise RuntimeError("Invalid USD stage")
+            raise OpenUSDError("Invalid USD stage")
+
+        stage_obj = stage.get("stage") if isinstance(stage, dict) else stage
+        if stage_obj is None:
+            raise OpenUSDError("Invalid USD stage")
 
         if not prim_path.startswith("/"):
             prim_path = "/" + prim_path
 
         # Create or get the light prim
-        prim = stage.GetPrimAtPath(prim_path)
+        prim = stage_obj.GetPrimAtPath(prim_path)
         if not prim.IsValid():
             if light_type == "DomeLight":
-                light = UsdLux.DomeLight.Define(stage, prim_path)
+                light = UsdLux.DomeLight.Define(stage_obj, prim_path)
             elif light_type == "DistantLight":
-                light = UsdLux.DistantLight.Define(stage, prim_path)
+                light = UsdLux.DistantLight.Define(stage_obj, prim_path)
             elif light_type == "SphereLight":
-                light = UsdLux.SphereLight.Define(stage, prim_path)
+                light = UsdLux.SphereLight.Define(stage_obj, prim_path)
             elif light_type == "RectLight":
-                light = UsdLux.RectLight.Define(stage, prim_path)
+                light = UsdLux.RectLight.Define(stage_obj, prim_path)
             prim = light.GetPrim()
         else:
             # If editing, cast to light
@@ -75,16 +88,23 @@ class CreateUSDLight:
             elif light_type == "RectLight":
                 light = UsdLux.RectLight(prim)
 
-        color_r, color_g, color_b, color_a = hex_to_rgba(color)
+        color_r, color_g, color_b, _ = hex_to_rgba(color)
 
         if prim.IsValid():
             self.apply_attr(prim, "intensity", intensity, intensity_mode, Sdf.ValueTypeNames.Float)
             self.apply_attr(prim, "exposure", exposure, exposure_mode, Sdf.ValueTypeNames.Float)
             self.apply_attr(prim, "color", Gf.Vec3f(color_r, color_g, color_b), color_mode, Sdf.ValueTypeNames.Color3f)
-            
+
             if light_type == "DomeLight":
                 abs_tex = os.path.abspath(texture_path) if texture_path.strip() else ""
-                self.apply_attr(prim, "texture:file", Sdf.AssetPath(abs_tex) if abs_tex else "", texture_mode, Sdf.ValueTypeNames.Asset)
+                self.apply_attr(
+                    prim,
+                    "texture:file",
+                    Sdf.AssetPath(abs_tex) if abs_tex else "",
+                    texture_mode,
+                    Sdf.ValueTypeNames.Asset,
+                )
 
-        return ({"stage": stage},)
+        return (stage,)
+
 

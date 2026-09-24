@@ -1,6 +1,9 @@
 from .utils import CONVERTERS
 
+
 class CreateUSDVec4:
+    """Create a USD 4D vector value (float4, double4, int4, half4)."""
+
     CATEGORY = "3d/usd/type"
     FUNCTION = "create_vec4"
     RETURN_TYPES = ("VEC4",)
@@ -14,19 +17,16 @@ class CreateUSDVec4:
                 "y": ("FLOAT", {"default": 0.0, "step": 0.01}),
                 "z": ("FLOAT", {"default": 0.0, "step": 0.01}),
                 "w": ("FLOAT", {"default": 0.0, "step": 0.01}),
-                "vec4_type": ([
-                    "float4", "double4", "int4", "half4", 
-                    "color4f", "color4d", "color4h",
-                ], {"default": "float4"}),
+                "vec4_type": (
+                    ["float4", "double4", "int4", "half4"],
+                    {"default": "float4"},
+                ),
             }
         }
 
-    def create_vec4(self, x, y, z, w, vec4_type):
-        if vec4_type not in CONVERTERS:
-            raise TypeError(f"Unsupported vec4 type: {vec4_type}")
-
-        ctor, _ = CONVERTERS[vec4_type]
-
+    def create_vec4(self, x: float, y: float, z: float, w: float, vec4_type: str):
+        entry = CONVERTERS[vec4_type]
+        ctor = entry[0] if isinstance(entry, (tuple, list)) else entry
         value = ctor((x, y, z, w))
 
         return (
