@@ -2,6 +2,8 @@ from .utils import CONVERTERS
 
 
 class CreateUSDQuat:
+    """Create a USD quaternion from (w, x, y, z) rotation coordinates."""
+
     CATEGORY = "3d/usd/type"
     FUNCTION = "create_quaternion"
     RETURN_TYPES = ("USD_VALUE",)
@@ -17,20 +19,17 @@ class CreateUSDQuat:
             }
         }
 
-    def create_quaternion(self, rotation, quat_precision, normalize):
+    def create_quaternion(self, rotation, quat_precision: str, normalize: bool = True):
         if quat_precision not in CONVERTERS:
             raise TypeError(f"Unsupported quaternion type: {quat_precision}")
 
-        ctor, _ = CONVERTERS[quat_precision]
+        entry = CONVERTERS[quat_precision]
+        ctor = entry[0] if isinstance(entry, (tuple, list)) else entry
 
-        # extract VEC4 payload
         r = rotation.get("data", rotation) if isinstance(rotation, dict) else rotation
         w, x, y, z = r
 
-        # construct USD quaternion via registry
         quat = ctor((w, x, y, z))
-
-        # optional normalization stays domain-specific (USD API, not converter layer)
         if normalize and hasattr(quat, "GetNormalized"):
             quat = quat.GetNormalized()
 

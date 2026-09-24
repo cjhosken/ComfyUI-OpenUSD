@@ -1,12 +1,14 @@
 import os
 import shutil
-from pxr import Usd, Sdf
+from pxr import Sdf, Usd
 from .utils import OpenUSDError, resolve_usd_paths
 
+
 class LoadUSD:
+    """Load a USD stage from disk."""
+
     CATEGORY = "3d/usd/io"
     FUNCTION = "load_usd"
-
     RETURN_TYPES = ("USD",)
     RETURN_NAMES = ("stage",)
 
@@ -24,24 +26,28 @@ class LoadUSD:
                 ),
             }
         }
-    
+
     @classmethod
     def IS_CHANGED(cls, file_path):
         return float("NaN")
 
-    def load_usd(self, file_path):
+    def load_usd(self, file_path: str):
         if not os.path.exists(file_path):
-            raise OpenUSDError(f"file not found at {file_path}")
+            raise OpenUSDError(f"File not found: {file_path}")
 
         stage = Usd.Stage.Open(file_path)
-        stage.Load()
+        if not stage:
+            raise OpenUSDError(f"Failed to open USD stage from {file_path}")
 
+        stage.Load()
         return (stage,)
 
+
 class SaveUSD:
+    """Save or export an active USD stage to disk."""
+
     CATEGORY = "3d/usd/io"
     FUNCTION = "save_usd"
-
     RETURN_TYPES = ("USD",)
     RETURN_NAMES = ("stage",)
     OUTPUT_NODE = True
@@ -73,49 +79,51 @@ class SaveUSD:
             shutil.rmtree(asset_folder)
 
         copied = {}
-
-        layer_idents = [l.identifier for l in stage.GetUsedLayers()]
+        layer_idents = [layer.identifier for layer in stage.GetUsedLayers()]
 
         for ident in layer_idents:
-            lyr = Sdf.Layer.FindOrOpen(ident)
-            
-            if lyr is None or lyr.anonymous:
+            layer = Sdf.Layer.FindOrOpen(ident)
+            if layer is None or layer.anonymous:
                 continue
 
-            for ref in lyr.GetExternalReferences():
+            for ref in layer.GetExternalReferences():
                 if not ref:
                     continue
 
-                abs_src = lyr.ComputeAbsolutePath(ref)
-
+                abs_src = layer.ComputeAbsolutePath(ref)
                 if not os.path.exists(abs_src):
-                    print(f"[SaveUSD] Warning: could not resolve '{ref}' from {lyr.identifier}")
+                    print(f"[SaveUSD] Warning: could not resolve external reference '{ref}' from {layer.identifier}")
                     continue
 
                 if abs_src in copied:
                     new_ref = copied[abs_src]
-
                 else:
                     os.makedirs(asset_folder, exist_ok=True)
                     ref_name = os.path.basename(abs_src)
                     dest = os.path.join(asset_folder, ref_name)
 
                     base, ext = os.path.splitext(ref_name)
-                    n = 1
+                    counter = 1
                     while os.path.exists(dest) and not os.path.samefile(dest, abs_src):
-                        dest = os.path.join(asset_folder, f"{base}_{n}{ext}")
-                        n += 1
+                        dest = os.path.join(asset_folder, f"{base}_{counter}{ext}")
+                        counter += 1
 
                     shutil.copy(abs_src, dest)
                     new_ref = dest
                     copied[abs_src] = new_ref
 
-                lyr.UpdateExternalReference(ref, new_ref)
+                layer.UpdateExternalReference(ref, new_ref)
 
-    def save_usd(self, stage, output_path, make_paths_relative, package_assets, flatten_stage):
-
+    def save_usd(
+        self,
+        stage,
+        output_path: str,
+        make_paths_relative: bool,
+        package_assets: bool,
+        flatten_stage: bool,
+    ):
         if stage is None:
-            raise OpenUSDError("Invalid Stage")
+            raise OpenUSDError("Invalid USD Stage")
 
         stage.Load()
 
@@ -124,12 +132,10 @@ class SaveUSD:
             os.makedirs(out_dir, exist_ok=True)
 
         root_layer = stage.GetRootLayer()
-
         if flatten_stage:
             root_layer = stage.Flatten()
 
-        resolve_usd_paths(root_layer, False)
-
+        resolve_usd_paths(root_layer, relative=False)
         root_layer.Export(output_path)
 
         saved_stage = Usd.Stage.Open(output_path)
@@ -139,12 +145,11 @@ class SaveUSD:
         if package_assets:
             self._package_assets(saved_stage)
 
-        resolve_usd_paths(saved_root_layer, make_paths_relative)
-        
+        resolve_usd_paths(saved_root_layer, relative=make_paths_relative)
         saved_root_layer.Save()
 
         return (saved_stage,)
-    
+
 
 NODE_CLASS_MAPPINGS = {
     "LoadUSD": LoadUSD,

@@ -1,9 +1,9 @@
 from .configure import ConfigureUSDStage
 from .create import CreateUSDStage
 from .layerbreak import LayerBreakUSD
-from .sublayer import AddUSDSublayer
-from .specializes import AddUSDSpecializes
 from .reference import AddUSDReferenceOrPayload
+from .specializes import AddUSDSpecializes
+from .sublayer import AddUSDSublayer
 from .variant import AddUSDVariant
 
 NODE_CLASS_MAPPINGS = {
@@ -13,7 +13,7 @@ NODE_CLASS_MAPPINGS = {
     "AddUSDSublayer": AddUSDSublayer,
     "AddUSDReferenceOrPayload": AddUSDReferenceOrPayload,
     "AddUSDVariant": AddUSDVariant,
-    "AddUSDSpecializes": AddUSDSpecializes
+    "AddUSDSpecializes": AddUSDSpecializes,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -23,5 +23,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AddUSDSublayer": "Sublayer USD",
     "AddUSDReferenceOrPayload": "Add USD Reference / Payload",
     "AddUSDVariant": "Add USD Variant",
-    "AddUSDSpecializes": "Add USD Specializes"
+    "AddUSDSpecializes": "Add USD Specializes",
 }

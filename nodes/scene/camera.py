@@ -1,4 +1,6 @@
-from pxr import Sdf, UsdGeom, Gf
+from pxr import Gf, Sdf, UsdGeom
+from ..utils import OpenUSDError
+
 
 class CreateUSDCamera:
     CATEGORY = "3d/usd/scene"
@@ -26,7 +28,7 @@ class CreateUSDCamera:
             }
         }
 
-    def apply_attr(self, prim, attr_name, value, mode, type_name):
+    def apply_attr(self, prim, attr_name: str, value, mode: str, type_name):
         if mode == "ignore":
             return
         attr = prim.GetAttribute(attr_name)
@@ -39,29 +41,47 @@ class CreateUSDCamera:
                 attr = prim.CreateAttribute(attr_name, type_name)
             attr.Set(value)
 
-    def create_camera(self, stage, prim_path, focal_length, focal_length_mode,
-                      horizontal_aperture, horizontal_aperture_mode,
-                      vertical_aperture, vertical_aperture_mode,
-                      near_clip, near_clip_mode, far_clip, far_clip_mode):
-
+    def create_camera(
+        self,
+        stage,
+        prim_path: str,
+        focal_length: float,
+        focal_length_mode: str,
+        horizontal_aperture: float,
+        horizontal_aperture_mode: str,
+        vertical_aperture: float,
+        vertical_aperture_mode: str,
+        near_clip: float,
+        near_clip_mode: str,
+        far_clip: float,
+        far_clip_mode: str,
+    ):
         if stage is None:
-            raise RuntimeError("Invalid USD stage")
+            raise OpenUSDError("Invalid USD stage")
+
+        stage_obj = stage.get("stage") if isinstance(stage, dict) else stage
+        if stage_obj is None:
+            raise OpenUSDError("Invalid USD stage")
 
         if not prim_path.startswith("/"):
             prim_path = "/" + prim_path
 
-        prim = stage.GetPrimAtPath(prim_path)
+        prim = stage_obj.GetPrimAtPath(prim_path)
         if not prim.IsValid():
-            cam = UsdGeom.Camera.Define(stage, prim_path)
+            cam = UsdGeom.Camera.Define(stage_obj, prim_path)
             prim = cam.GetPrim()
         else:
             cam = UsdGeom.Camera(prim)
 
         if prim.IsValid():
             self.apply_attr(prim, "focalLength", focal_length, focal_length_mode, Sdf.ValueTypeNames.Float)
-            self.apply_attr(prim, "horizontalAperture", horizontal_aperture, horizontal_aperture_mode, Sdf.ValueTypeNames.Float)
-            self.apply_attr(prim, "verticalAperture", vertical_aperture, vertical_aperture_mode, Sdf.ValueTypeNames.Float)
-            
+            self.apply_attr(
+                prim, "horizontalAperture", horizontal_aperture, horizontal_aperture_mode, Sdf.ValueTypeNames.Float
+            )
+            self.apply_attr(
+                prim, "verticalAperture", vertical_aperture, vertical_aperture_mode, Sdf.ValueTypeNames.Float
+            )
+
             # Clipping range requires combining near and far clips into a float2
             if near_clip_mode == "block" or far_clip_mode == "block":
                 clip_attr = prim.GetAttribute("clippingRange")
@@ -76,10 +96,11 @@ class CreateUSDCamera:
                     ex_val = clip_attr.Get()
                     curr_val = Gf.Vec2f(
                         near_clip if near_clip_mode == "create/set" else ex_val[0],
-                        far_clip if far_clip_mode == "create/set" else ex_val[1]
+                        far_clip if far_clip_mode == "create/set" else ex_val[1],
                     )
                 if not clip_attr.IsValid():
                     clip_attr = prim.CreateAttribute("clippingRange", Sdf.ValueTypeNames.Float2)
                 clip_attr.Set(curr_val)
 
         return (stage,)
+

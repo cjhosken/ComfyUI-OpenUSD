@@ -1,8 +1,28 @@
 import json
-from ...utils import find_prims
 from ...types.utils import CONVERTERS, set_usd_data
+from ...utils import OpenUSDError, find_prims
 
 USD_TYPE_LIST = sorted(list(CONVERTERS.keys()))
+
+
+def _serialize_usd_value(val):
+    """Recursively convert USD/Gf/Vt types to JSON-serializable Python objects."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float, str, bool)):
+        return val
+    if hasattr(val, "path"):
+        return val.path
+    if hasattr(val, "GetReal") and hasattr(val, "GetImaginary"):
+        return [float(val.GetReal()), *(float(x) for x in val.GetImaginary())]
+    if hasattr(val, "__len__") and not isinstance(val, (str, bytes, dict)):
+        return [_serialize_usd_value(x) for x in val]
+    try:
+        json.dumps(val)
+        return val
+    except Exception:
+        return str(val)
+
 
 class GetUSDAttribute:
     CATEGORY = "3d/usd/prim"
@@ -17,30 +37,31 @@ class GetUSDAttribute:
                 "stage": ("USD",),
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "attribute_name": ("STRING", {"default": "myAttribute"}),
-                "is_primvar": ("BOOLEAN", {"default": True})
+                "is_primvar": ("BOOLEAN", {"default": True}),
             }
         }
 
-    def get_attribute(self, stage, prim_path, attribute_name, is_primvar):
-
+    def get_attribute(self, stage, prim_path: str, attribute_name: str, is_primvar: bool):
         if stage is None:
-            raise RuntimeError("Invalid USD stage")
+            raise OpenUSDError("Invalid USD stage")
+
+        stage_obj = stage.get("stage") if isinstance(stage, dict) else stage
+        if stage_obj is None:
+            raise OpenUSDError("Invalid USD stage")
 
         if not prim_path.startswith("/"):
             prim_path = "/" + prim_path
 
-        prim = stage.GetPrimAtPath(prim_path)
-            
+        prim = stage_obj.GetPrimAtPath(prim_path)
         if not prim.IsValid():
             print(f"[GetUSDAttribute] Warning: Prim '{prim_path}' not found.")
             return (None,)
 
         attr = prim.GetAttribute(attribute_name)
         if not attr.IsValid() or not attr.HasValue():
-            if is_primvar:
-                if not attribute_name.startswith("primvars:"):
-                    attr = prim.GetAttribute(f"primvars:{attribute_name}")
-            
+            if is_primvar and not attribute_name.startswith("primvars:"):
+                attr = prim.GetAttribute(f"primvars:{attribute_name}")
+
         if not attr.IsValid() or not attr.HasValue():
             print(f"[GetUSDAttribute] Warning: Attribute '{attribute_name}' not found on '{prim_path}'.")
             return (None,)
@@ -49,10 +70,12 @@ class GetUSDAttribute:
         if val is None:
             return (None,)
 
-        return json.dumps({
-            "data": val,
-            "type": attr.GetTypeName().GetAsToken()
+        payload = json.dumps({
+            "data": _serialize_usd_value(val),
+            "type": str(attr.GetTypeName()),
         })
+        return (payload,)
+
 
 
 class SetUSDAttribute:
@@ -69,20 +92,22 @@ class SetUSDAttribute:
                 "prim_path": ("STRING", {"default": "/Root/Mesh"}),
                 "usd_attribute_name": ("STRING", {"default": "myAttribute"}),
                 "usd_attribute_type": (USD_TYPE_LIST, {"default": "vector3f"}),
-
                 "is_primvar": ("BOOLEAN", {"default": True}),
-                "value": ("*",)
+                "value": ("*",),
             }
         }
 
-
-    def set_attribute(self, stage, prim_path, usd_attribute_name, usd_attribute_type, is_primvar, value):
+    def set_attribute(self, stage, prim_path: str, usd_attribute_name: str, usd_attribute_type: str, is_primvar: bool, value):
         if stage is None:
-            raise RuntimeError("Invalid USD stage")
+            raise OpenUSDError("Invalid USD stage")
 
-        matched_prims = find_prims(stage, prim_path)
+        stage_obj = stage.get("stage") if isinstance(stage, dict) else stage
+        if stage_obj is None:
+            raise OpenUSDError("Invalid USD stage")
+
+        matched_prims = find_prims(stage_obj, prim_path)
         if not matched_prims:
-            raise RuntimeError(f"No prims matched: {prim_path}")
+            raise OpenUSDError(f"No prims matched: {prim_path}")
 
         for prim in matched_prims:
             set_usd_data(
@@ -90,7 +115,7 @@ class SetUSDAttribute:
                 usd_attribute_name,
                 value,
                 usd_attribute_type,
-                is_primvar
+                is_primvar,
             )
 
         return (stage,)

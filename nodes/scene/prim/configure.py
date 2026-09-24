@@ -1,4 +1,6 @@
 from pxr import UsdGeom
+from ...utils import OpenUSDError
+
 
 class ConfigureUSDPrim:
     CATEGORY = "3d/usd/prim"
@@ -20,25 +22,34 @@ class ConfigureUSDPrim:
             }
         }
 
-    def configure_prim(self, stage, prim_path, active=True, visibility="inherited", 
-                       purpose="default", kind="", comment=""):
-
+    def configure_prim(
+        self,
+        stage,
+        prim_path: str,
+        active: bool = True,
+        visibility: str = "inherited",
+        purpose: str = "default",
+        kind: str = "",
+        comment: str = "",
+    ):
         if stage is None:
-            raise RuntimeError("Invalid USD stage")
+            raise OpenUSDError("Invalid USD stage")
+
+        stage_obj = stage.get("stage") if isinstance(stage, dict) else stage
+        if stage_obj is None:
+            raise OpenUSDError("Invalid USD stage")
 
         # Ensure leading slash for prim path
         if not prim_path.startswith("/"):
             prim_path = "/" + prim_path
 
         # Get or create prim
-        prim = stage.GetPrimAtPath(prim_path)
+        prim = stage_obj.GetPrimAtPath(prim_path)
         if not prim.IsValid():
-            # Create the prim with default type
-            prim = stage.DefinePrim(prim_path, "Xform")
-            print(f"[ConfigureUSDPrim] Created new prim at {prim_path}")
+            prim = stage_obj.DefinePrim(prim_path, "Xform")
 
         # 1. Set active state
-        if hasattr(prim, 'SetActive'):
+        if hasattr(prim, "SetActive"):
             prim.SetActive(active)
 
         # 2. Set visibility
@@ -56,7 +67,7 @@ class ConfigureUSDPrim:
         # 4. Set kind
         if kind and kind.strip():
             try:
-                if hasattr(prim, 'SetKind'):
+                if hasattr(prim, "SetKind"):
                     prim.SetKind(kind.strip())
             except Exception as e:
                 print(f"[ConfigureUSDPrim] Error setting kind: {e}")
@@ -64,15 +75,9 @@ class ConfigureUSDPrim:
         # 5. Set comment
         if comment and comment.strip():
             try:
-                prim_spec = prim.GetPrimSpec()
-                if prim_spec:
-                    prim_spec.SetField('comment', comment.strip())
-                else:
-                    layer = stage.GetRootLayer()
-                    prim_spec = layer.GetPrimSpec(prim_path)
-                    if prim_spec:
-                        prim_spec.SetField('comment', comment.strip())
+                prim.SetMetadata("comment", comment.strip())
             except Exception as e:
                 print(f"[ConfigureUSDPrim] Error setting comment: {e}")
+
 
         return (stage,)

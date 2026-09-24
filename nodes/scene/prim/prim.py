@@ -1,10 +1,12 @@
-from pxr import Usd, Sdf
+from pxr import Sdf
+from ...utils import OpenUSDError
+
 
 class GetUSDPrimUSDA:
     CATEGORY = "3d/usd/prim"
     FUNCTION = "get_usda"
-    RETURN_TYPES = ("USD", "STRING",)
-    RETURN_NAMES = ("stage", "usda_text",)
+    RETURN_TYPES = ("USD", "STRING")
+    RETURN_NAMES = ("stage", "usda_text")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -15,23 +17,28 @@ class GetUSDPrimUSDA:
             }
         }
 
-    def get_usda(self, USD, prim_path):
-        stage = USD.get("stage", None)
-        if stage is None:
-            raise RuntimeError("Invalid USD stage")
+    def get_usda(self, stage=None, prim_path: str = "/Root", USD=None):
+        raw_stage = stage if stage is not None else USD
+        if raw_stage is None:
+            raise OpenUSDError("Invalid USD stage")
+
+        stage_obj = raw_stage.get("stage") if isinstance(raw_stage, dict) else raw_stage
+        if stage_obj is None:
+            raise OpenUSDError("Invalid USD stage")
 
         if not prim_path.startswith("/"):
             prim_path = "/" + prim_path
 
-        prim = stage.GetPrimAtPath(prim_path)
+        prim = stage_obj.GetPrimAtPath(prim_path)
         if not prim.IsValid():
-            raise ValueError(f"Prim not found: {prim_path}")
+            raise OpenUSDError(f"Prim not found: {prim_path}")
 
-        src_layer = stage.GetRootLayer()
+        src_layer = stage_obj.GetRootLayer()
         dst_layer = Sdf.Layer.CreateAnonymous()
         Sdf.CopySpec(src_layer, Sdf.Path(prim_path), dst_layer, Sdf.Path(prim_path))
-        return ({"stage": stage}, dst_layer.ExportToString(),)
-    
+        return (raw_stage, dst_layer.ExportToString())
+
+
 class SetUSDPrimUSDA:
     CATEGORY = "3d/usd/prim"
     FUNCTION = "set_usda"
@@ -48,22 +55,27 @@ class SetUSDPrimUSDA:
             }
         }
 
-    def set_usda(self, stage, usda_text, mode="merge"):
+    def set_usda(self, stage, usda_text: str, mode: str = "merge"):
         if stage is None:
-            raise RuntimeError("Invalid USD stage")
+            raise OpenUSDError("Invalid USD stage")
+
+        stage_obj = stage.get("stage") if isinstance(stage, dict) else stage
+        if stage_obj is None:
+            raise OpenUSDError("Invalid USD stage")
 
         layer = Sdf.Layer.CreateAnonymous()
         success = layer.ImportFromString(usda_text)
 
         if not success:
-            raise RuntimeError("Failed to parse USDA text")
+            raise OpenUSDError("Failed to parse USDA text")
 
         if mode == "overwrite":
-            stage.GetRootLayer().Clear()
-            stage.GetRootLayer().TransferContent(layer)
+            stage_obj.GetRootLayer().Clear()
+            stage_obj.GetRootLayer().TransferContent(layer)
         elif mode == "merge":
-            stage.GetRootLayer().TransferContent(layer)
+            stage_obj.GetRootLayer().TransferContent(layer)
         else:
-            raise ValueError(f"Unknown mode: {mode}")
+            raise OpenUSDError(f"Unknown mode: {mode}")
 
         return (stage,)
+
